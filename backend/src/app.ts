@@ -4,6 +4,11 @@ import helmet from "helmet";
 import compression from "compression";
 import morgan from "morgan";
 import cookieParser from "cookie-parser";
+import { errorHandler } from "./middlewares/error.middleware";
+
+import authRoutes from "./modules/auth/auth.routes";
+import integrationRoutes from "./modules/integrations/integration.routes";
+
 
 const app = express();
 
@@ -19,6 +24,9 @@ app.use(compression());
 
 app.use(morgan("dev"));
 
+app.use(errorHandler);
+app.use("/api/auth", authRoutes);
+app.use("/api/integrations", integrationRoutes);
 app.get("/health", (req, res) => {
   res.status(200).json({
     success: true,

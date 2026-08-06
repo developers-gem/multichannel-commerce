@@ -1,0 +1,6 @@
+export enum Platform {
+  SHOPIFY = "SHOPIFY",
+  EBAY = "EBAY",
+  WOOCOMMERCE = "WOOCOMMERCE",
+  CUSTOM_WEBSITE = "CUSTOM_WEBSITE",
+}
