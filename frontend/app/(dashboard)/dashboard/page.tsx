@@ -12,6 +12,7 @@ import RecentActivity from "@/components/dashboard/recent-activity";
 import QuickActions from "@/components/dashboard/quick-actions";
 import IntegrationStatus from "@/components/dashboard/integration-status";
 import { useIntegrations } from "@/hooks/use-integrations";
+    import { formatDistanceToNow } from "date-fns";
 
 
 export default function DashboardPage() {
@@ -23,10 +24,16 @@ export default function DashboardPage() {
     const activeIntegrations =
         data?.data.filter((item) => item.isActive).length ?? 0;
 
-    const lastSync =
-        data?.data[0]?.updatedAt
-            ? new Date(data.data[0].updatedAt).toLocaleString()
-            : "--";
+
+const lastSync =
+  data?.data[0]?.updatedAt
+    ? formatDistanceToNow(
+        new Date(data.data[0].updatedAt),
+        {
+          addSuffix: true,
+        }
+      )
+    : "--";
 
 
     return (
@@ -72,8 +79,8 @@ export default function DashboardPage() {
 
                 <StatCard
                     title="Last Sync"
-                    value="5 mins"
-                    subtitle="Successful"
+                    value={lastSync}
+                    subtitle="Latest Integration"
                     icon={Boxes}
                     color="bg-purple-100 text-purple-600"
                 />
@@ -81,11 +88,14 @@ export default function DashboardPage() {
 
             {/* Widgets */}
 
-            <div className="grid gap-6 lg:grid-cols-2">
-                <RecentActivity />
+           <div className="grid gap-6 lg:grid-cols-2">
+  <IntegrationStatus />
 
-                <QuickActions />
-            </div>
+  <div className="space-y-6">
+    <RecentActivity />
+    <QuickActions />
+  </div>
+</div>
         </div>
     );
 }
