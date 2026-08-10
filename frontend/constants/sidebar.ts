@@ -2,6 +2,7 @@ import {
   LayoutDashboard,
   Link2,
   Package,
+  GitCompare,
   FileSpreadsheet,
   RefreshCw,
   Settings,
@@ -23,6 +24,11 @@ export const sidebarItems = [
     title: "Products",
     href: "/products",
     icon: Package,
+  },
+  {
+    title: "Product Mappings",
+    href: "/product-mappings",
+    icon: GitCompare,
   },
   {
     title: "CSV Import",

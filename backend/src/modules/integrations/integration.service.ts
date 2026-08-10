@@ -2,6 +2,7 @@ import Integration from "./integration.model";
 
 import { ApiError } from "../../utils/ApiError";
 import { HTTP_STATUS } from "../../shared/constants/http-status.constants";
+import { MarketplaceConnectorFactory } from "../sync/connectors/connector.factory";
 
 import { CreateIntegrationDto } from "./integration.types";
 
@@ -101,6 +102,42 @@ class IntegrationService {
     }
 
     return;
+  }
+
+  /**
+   * Test Integration Connection Health
+   */
+  async testConnection(id: string) {
+    const integration = await Integration.findById(id);
+
+    if (!integration) {
+      throw new ApiError(
+        HTTP_STATUS.NOT_FOUND,
+        "Integration not found"
+      );
+    }
+
+    if (!integration.isActive) {
+      return {
+        success: false,
+        message: "Integration is disabled/inactive",
+      };
+    }
+
+    const connector = MarketplaceConnectorFactory.getConnector(integration.platform);
+    if (!connector || typeof connector.testConnection !== "function") {
+      return {
+        success: false,
+        message: `Health check is not supported for platform '${integration.platform}'`,
+      };
+    }
+
+    const result = await connector.testConnection(
+      integration.credentials,
+      integration.storeUrl
+    );
+
+    return result;
   }
 }
 

@@ -6,6 +6,8 @@ import {
   getProductById,
   updateProduct,
   deleteProduct,
+  syncProductChannels,
+  publishProductToChannels,
 } from "./product.controller";
 
 import { validate } from "../../middlewares/validate.middleware";
@@ -46,6 +48,18 @@ router.delete(
   "/:id",
   authenticate,
   deleteProduct
+);
+
+router.post(
+  "/:id/sync",
+  authenticate,
+  syncProductChannels
+);
+
+router.post(
+  "/:id/publish",
+  authenticate,
+  publishProductToChannels
 );
 
 export default router;

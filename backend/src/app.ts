@@ -9,7 +9,10 @@ import { errorHandler } from "./middlewares/error.middleware";
 import authRoutes from "./modules/auth/auth.routes";
 import integrationRoutes from "./modules/integrations/integration.routes";
 import productRoutes from "./modules/products/product.routes";
-
+import productMappingRoutes from "./modules/product-mappings/product-mapping.routes";
+import csvImportRoutes from "./modules/csv-import/csv-import.routes";
+import syncRoutes from "./modules/sync/sync.routes";
+import catalogImportRoutes from "./modules/catalog-import/catalog-import.routes";
 
 const app = express();
 
@@ -28,7 +31,10 @@ app.use(morgan("dev"));
 app.use("/api/auth", authRoutes);
 app.use("/api/integrations", integrationRoutes);
 app.use("/api/products", productRoutes);
-
+app.use("/api/product-mappings", productMappingRoutes);
+app.use("/api/csv-import", csvImportRoutes);
+app.use("/api/sync", syncRoutes);
+app.use("/api/catalog-import", catalogImportRoutes);
 
 app.get("/health", (req, res) => {
   res.status(200).json({

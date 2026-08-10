@@ -11,4 +11,14 @@ export const env = {
   JWT_SECRET: process.env.JWT_SECRET || "",
 
   JWT_EXPIRES_IN: (process.env.JWT_EXPIRES_IN || "7d") as `${number}${"d" | "h" | "m" | "s"}` | number,
+
+  REDIS_HOST: process.env.REDIS_HOST || "localhost",
+  REDIS_PORT: Number(process.env.REDIS_PORT) || 6379,
+  REDIS_PASSWORD: process.env.REDIS_PASSWORD || "",
+  REDIS_DB: Number(process.env.REDIS_DB) || 0,
+
+  SYNC_CONCURRENCY: Number(process.env.SYNC_CONCURRENCY) || 5,
+  SYNC_MAX_RETRIES: Number(process.env.SYNC_MAX_RETRIES) || 3,
+
+  SHOPIFY_API_VERSION: process.env.SHOPIFY_API_VERSION || "2026-01",
 };

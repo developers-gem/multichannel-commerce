@@ -52,22 +52,26 @@ const saveLogin = useAuthStore((state) => state.login);
   const remember = watch("remember");
 
   const mutation = useMutation({
-  mutationFn: login,
+    mutationFn: login,
 
-  onSuccess: (response) => {
-    saveLogin(response.token, response.user);
+    onSuccess: (response) => {
+      const token = response.data?.token;
+      const user = response.data?.user;
 
-    localStorage.setItem("token", response.token);
+      if (token && user) {
+        saveLogin(token, user);
+        localStorage.setItem("token", token);
+        toast.success("Login Successful");
+        router.push("/dashboard");
+      } else {
+        toast.error("Invalid login response format");
+      }
+    },
 
-    toast.success("Login Successful");
-
-    router.push("/dashboard");
-  },
-
-  onError: (error: Error) => {
-    toast.error(error.message);
-  },
-});
+    onError: (error: Error) => {
+      toast.error(error.message);
+    },
+  });
 
   const onSubmit: SubmitHandler<LoginFormValues> = (values) => {
   mutation.mutate({

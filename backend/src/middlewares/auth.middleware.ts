@@ -1,15 +1,8 @@
 import { Request, Response, NextFunction } from "express";
-import jwt, { JwtPayload } from "jsonwebtoken";
-
 import User from "../modules/auth/user.model";
-
 import { ApiError } from "../utils/ApiError";
-
 import { HTTP_STATUS } from "../shared/constants/http-status.constants";
-
-interface AuthTokenPayload extends JwtPayload {
-  userId: string;
-}
+import { verifyToken } from "../utils/jwt";
 
 export const authenticate = async (
   req: Request,
@@ -22,23 +15,49 @@ export const authenticate = async (
     if (!authHeader || !authHeader.startsWith("Bearer ")) {
       throw new ApiError(
         HTTP_STATUS.UNAUTHORIZED,
-        "Unauthorized"
+        "Unauthorized: Missing or malformed token"
       );
     }
 
     const token = authHeader.split(" ")[1];
 
-    const decoded = jwt.verify(
-      token,
-      process.env.JWT_SECRET!
-    ) as AuthTokenPayload;
+    if (!token) {
+      throw new ApiError(
+        HTTP_STATUS.UNAUTHORIZED,
+        "Unauthorized: Token missing"
+      );
+    }
 
-    const user = await User.findById(decoded.userId).select("-password");
+    let decoded;
+    try {
+      decoded = verifyToken(token);
+    } catch (err) {
+      throw new ApiError(
+        HTTP_STATUS.UNAUTHORIZED,
+        "Unauthorized: Invalid or expired token"
+      );
+    }
+
+    if (!decoded || !decoded.id) {
+      throw new ApiError(
+        HTTP_STATUS.UNAUTHORIZED,
+        "Unauthorized: Invalid token payload"
+      );
+    }
+
+    const user = await User.findById(decoded.id).select("-password");
 
     if (!user) {
       throw new ApiError(
         HTTP_STATUS.UNAUTHORIZED,
-        "User not found"
+        "Unauthorized: User not found"
+      );
+    }
+
+    if (!user.isActive) {
+      throw new ApiError(
+        HTTP_STATUS.UNAUTHORIZED,
+        "Unauthorized: User account is inactive"
       );
     }
 
