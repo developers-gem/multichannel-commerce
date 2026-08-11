@@ -11,12 +11,14 @@ import {
   Layers,
   Loader2,
   Send,
+  Trash2,
+  Ban,
 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Product } from "@/types/product";
-import { useProductMappings } from "@/hooks/use-product-mappings";
+import { useProductMappings, useUnpublishProductMapping } from "@/hooks/use-product-mappings";
 import { useSyncLogs, useTriggerSync, useRetrySync } from "@/hooks/use-sync";
 import { useSyncProductChannels } from "@/hooks/use-products";
 
@@ -43,8 +45,10 @@ export default function ProductSyncModal({
   const syncProductMutation = useSyncProductChannels();
   const manualSyncMutation = useTriggerSync();
   const retryMutation = useRetrySync();
+  const unpublishMutation = useUnpublishProductMapping();
 
   const [activeSyncingMappingId, setActiveSyncingMappingId] = useState<string | null>(null);
+  const [activeUnpublishingMappingId, setActiveUnpublishingMappingId] = useState<string | null>(null);
 
   const mappings = mappingsData?.data || [];
   const logs = logsData?.data?.logs || [];
@@ -88,6 +92,22 @@ export default function ProductSyncModal({
     });
   };
 
+  const handleUnpublish = (mappingId: string, storeName: string) => {
+    setActiveUnpublishingMappingId(mappingId);
+    toast.info(`Enqueuing unpublish job for ${storeName}...`);
+
+    unpublishMutation.mutate(mappingId, {
+      onSuccess: (res) => {
+        toast.success(res.message || `Unpublish job enqueued for ${storeName}`);
+        setActiveUnpublishingMappingId(null);
+      },
+      onError: (err: Error) => {
+        toast.error(err.message || `Failed to unpublish from ${storeName}`);
+        setActiveUnpublishingMappingId(null);
+      },
+    });
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4 overflow-y-auto">
       <div className="relative w-full max-w-3xl rounded-2xl bg-white p-6 shadow-2xl my-8">
@@ -127,7 +147,7 @@ export default function ProductSyncModal({
           </div>
           <div>
             <span className="text-xs text-slate-500 block uppercase font-medium">Channels</span>
-            <span className="font-bold text-indigo-700">{mappings.length} Connected</span>
+            <span className="font-bold text-indigo-700">{mappings.length} Mapped</span>
           </div>
         </div>
 
@@ -147,7 +167,7 @@ export default function ProductSyncModal({
                 className="text-xs gap-1.5 border-indigo-200 text-indigo-700 hover:bg-indigo-50"
               >
                 <Send className="h-3.5 w-3.5" />
-                Publish to Channels
+                Publish / Manage Channels
               </Button>
             )}
 
@@ -179,7 +199,7 @@ export default function ProductSyncModal({
             <Layers className="h-8 w-8 text-slate-400 mx-auto mb-2" />
             <p className="text-sm font-semibold text-slate-700">No Sales Channels Mapped Yet</p>
             <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
-              This product is not currently connected to any active marketplace integrations. Click "Publish to Channels" above to list it on your store accounts.
+              This product is not currently connected to any active marketplace integrations. Click "Publish / Manage Channels" above to list it on your store accounts.
             </p>
           </div>
         ) : (
@@ -190,6 +210,10 @@ export default function ProductSyncModal({
               const storeName = integration?.storeName || "Store";
 
               const isSyncingThis = activeSyncingMappingId === mapping._id;
+              const isUnpublishingThis = activeUnpublishingMappingId === mapping._id;
+
+              const isUnpublished = mapping.syncStatus === "UNPUBLISHED" || !mapping.isActive;
+
               const lastFailedLog = logs.find(
                 (l: any) => l.productMappingId === mapping._id && l.status === "FAILED"
               );
@@ -197,7 +221,11 @@ export default function ProductSyncModal({
               return (
                 <div
                   key={mapping._id}
-                  className="rounded-xl border bg-white p-4 shadow-sm hover:border-slate-300 transition-all space-y-3"
+                  className={`rounded-xl border p-4 transition-all space-y-3 ${
+                    isUnpublished
+                      ? "bg-slate-50/70 border-slate-200 opacity-80"
+                      : "bg-white border-slate-200 hover:border-slate-300 shadow-sm"
+                  }`}
                 >
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                     <div className="space-y-1">
@@ -223,32 +251,36 @@ export default function ProductSyncModal({
                         {/* Status Badge */}
                         <span
                           className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold ${
-                            mapping.syncStatus === "SYNCED"
+                            isUnpublished
+                              ? "bg-slate-100 text-slate-600 border border-slate-300"
+                              : mapping.syncStatus === "SYNCED"
                               ? "bg-green-50 text-green-700 border border-green-200"
                               : mapping.syncStatus === "FAILED"
                               ? "bg-red-50 text-red-700 border border-red-200"
                               : "bg-amber-50 text-amber-700 border border-amber-200"
                           }`}
                         >
-                          {mapping.syncStatus === "SYNCED" ? (
+                          {isUnpublished ? (
+                            <Ban className="h-3 w-3 text-slate-500" />
+                          ) : mapping.syncStatus === "SYNCED" ? (
                             <CheckCircle2 className="h-3 w-3" />
                           ) : mapping.syncStatus === "FAILED" ? (
                             <AlertCircle className="h-3 w-3" />
                           ) : (
                             <Clock className="h-3 w-3" />
                           )}
-                          {mapping.syncStatus}
+                          {isUnpublished ? "NOT PUBLISHED" : mapping.syncStatus}
                         </span>
                       </div>
 
                       <div className="flex flex-wrap items-center gap-3 text-xs text-slate-500 pt-1 font-mono">
-                        <span>Ext ID: {mapping.externalProductId || "(Pending Platform Create)"}</span>
+                        <span>Ext ID: {mapping.externalProductId || "(Not Listed)"}</span>
                         {mapping.externalVariantId && (
                           <span>Variant GID: {mapping.externalVariantId}</span>
                         )}
                         {mapping.lastSyncedAt && (
                           <span className="text-slate-400 font-sans">
-                            Synced: {new Date(mapping.lastSyncedAt).toLocaleString()}
+                            Last Sync: {new Date(mapping.lastSyncedAt).toLocaleString()}
                           </span>
                         )}
                       </div>
@@ -256,33 +288,62 @@ export default function ProductSyncModal({
 
                     {/* Channel Controls */}
                     <div className="flex items-center gap-2 shrink-0">
-                      {mapping.syncStatus === "FAILED" && lastFailedLog && (
+                      {isUnpublished ? (
                         <Button
                           variant="outline"
                           size="sm"
-                          onClick={() => handleRetry(lastFailedLog._id)}
-                          disabled={retryMutation.isPending}
-                          className="h-8 text-xs border-red-200 text-red-600 hover:bg-red-50"
+                          onClick={() => onPublishToChannels && onPublishToChannels(product)}
+                          className="h-8 text-xs border-indigo-200 text-indigo-700 hover:bg-indigo-50"
                         >
-                          <RotateCw className="h-3.5 w-3.5 mr-1" />
-                          Retry
+                          <Send className="h-3.5 w-3.5 mr-1" />
+                          Publish Again
                         </Button>
-                      )}
+                      ) : (
+                        <>
+                          {mapping.syncStatus === "FAILED" && lastFailedLog && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleRetry(lastFailedLog._id)}
+                              disabled={retryMutation.isPending}
+                              className="h-8 text-xs border-red-200 text-red-600 hover:bg-red-50"
+                            >
+                              <RotateCw className="h-3.5 w-3.5 mr-1" />
+                              Retry
+                            </Button>
+                          )}
 
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleSyncNow(mapping._id)}
-                        disabled={isSyncingThis || manualSyncMutation.isPending}
-                        className="h-8 text-xs hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200"
-                      >
-                        {isSyncingThis ? (
-                          <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" />
-                        ) : (
-                          <RefreshCw className="h-3.5 w-3.5 mr-1" />
-                        )}
-                        Sync Now
-                      </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleSyncNow(mapping._id)}
+                            disabled={isSyncingThis || manualSyncMutation.isPending}
+                            className="h-8 text-xs hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200"
+                          >
+                            {isSyncingThis ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" />
+                            ) : (
+                              <RefreshCw className="h-3.5 w-3.5 mr-1" />
+                            )}
+                            Sync Now
+                          </Button>
+
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleUnpublish(mapping._id, storeName)}
+                            disabled={isUnpublishingThis || unpublishMutation.isPending}
+                            className="h-8 text-xs border-amber-200 text-amber-700 hover:bg-amber-50"
+                          >
+                            {isUnpublishingThis ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" />
+                            ) : (
+                              <Trash2 className="h-3.5 w-3.5 mr-1" />
+                            )}
+                            Unpublish
+                          </Button>
+                        </>
+                      )}
                     </div>
                   </div>
 

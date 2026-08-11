@@ -77,3 +77,18 @@ export const deleteProductMapping = asyncHandler(
     );
   }
 );
+
+export const unpublishProductMapping = asyncHandler(
+  async (req: Request, res: Response) => {
+    const id = String(req.params.id);
+    const syncJobResult = await productMappingService.unpublishChannel(id);
+
+    return res.status(HTTP_STATUS.ACCEPTED).json(
+      new ApiResponse(
+        true,
+        "Unpublish job enqueued for channel integration",
+        syncJobResult
+      )
+    );
+  }
+);

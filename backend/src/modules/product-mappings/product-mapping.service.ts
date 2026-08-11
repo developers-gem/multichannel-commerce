@@ -5,6 +5,8 @@ import Integration from "../integrations/integration.model";
 import { ApiError } from "../../utils/ApiError";
 import { HTTP_STATUS } from "../../shared/constants/http-status.constants";
 import { SyncStatus } from "../../shared/enums/sync-status.enum";
+import { syncService } from "../sync/sync.service";
+import { SyncJobAction } from "../sync/sync.types";
 
 export interface CreateProductMappingDto {
   productId: string;
@@ -72,17 +74,19 @@ class ProductMappingService {
     }
 
     // Step 4: Check if externalProductId is already mapped to another product within the same integration
-    const existingExternalMapping = await ProductMapping.findOne({
-      integrationId: data.integrationId,
-      externalProductId: data.externalProductId,
-      isDeleted: false,
-    });
+    if (data.externalProductId && data.externalProductId.trim() !== "") {
+      const existingExternalMapping = await ProductMapping.findOne({
+        integrationId: data.integrationId,
+        externalProductId: data.externalProductId,
+        isDeleted: false,
+      });
 
-    if (existingExternalMapping) {
-      throw new ApiError(
-        HTTP_STATUS.BAD_REQUEST,
-        "External Product ID is already mapped to this integration"
-      );
+      if (existingExternalMapping) {
+        throw new ApiError(
+          HTTP_STATUS.BAD_REQUEST,
+          "External Product ID is already mapped to this integration"
+        );
+      }
     }
 
     // Step 5: Create Product Mapping
@@ -170,7 +174,8 @@ class ProductMappingService {
     // Check duplicate externalProductId within same integration if changed
     if (
       data.externalProductId &&
-      data.externalProductId !== mapping.externalProductId
+      data.externalProductId !== mapping.externalProductId &&
+      data.externalProductId.trim() !== ""
     ) {
       const duplicateExternal = await ProductMapping.findOne({
         integrationId: mapping.integrationId,
@@ -244,6 +249,32 @@ class ProductMappingService {
     await mapping.save();
 
     return;
+  }
+
+  /**
+   * 6. Unpublish Product Mapping (Enqueue DELETE Sync Job)
+   */
+  async unpublishChannel(id: string) {
+    const mapping = await ProductMapping.findOne({
+      _id: id,
+      isDeleted: false,
+    });
+
+    if (!mapping) {
+      throw new ApiError(HTTP_STATUS.NOT_FOUND, "Product mapping not found");
+    }
+
+    const integration = await Integration.findById(mapping.integrationId);
+    if (!integration || !integration.isActive) {
+      throw new ApiError(HTTP_STATUS.BAD_REQUEST, "Target channel integration is inactive or missing");
+    }
+
+    const syncJobResult = await syncService.enqueueSyncJob(
+      mapping._id.toString(),
+      SyncJobAction.DELETE
+    );
+
+    return syncJobResult;
   }
 }
 

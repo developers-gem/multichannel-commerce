@@ -1,17 +1,19 @@
 import { Router } from "express";
 import { authenticate } from "../../middlewares/auth.middleware";
-import { validate } from "../../middlewares/validate.middleware";
-import {
-  createProductMappingSchema,
-  updateProductMappingSchema,
-} from "./product-mapping.validation";
 import {
   createProductMapping,
   getAllProductMappings,
   getProductMappingById,
   updateProductMapping,
   deleteProductMapping,
+  unpublishProductMapping,
 } from "./product-mapping.controller";
+
+import { validate } from "../../middlewares/validate.middleware";
+import {
+  createProductMappingSchema,
+  updateProductMappingSchema,
+} from "./product-mapping.validation";
 
 const router = Router();
 
@@ -45,6 +47,12 @@ router.delete(
   "/:id",
   authenticate,
   deleteProductMapping
+);
+
+router.post(
+  "/:id/unpublish",
+  authenticate,
+  unpublishProductMapping
 );
 
 export default router;

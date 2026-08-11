@@ -3,6 +3,7 @@ import {
   createProductMapping,
   deleteProductMapping,
   getProductMappings,
+  unpublishProductMapping,
   updateProductMapping,
 } from "@/services/product-mapping.service";
 import {
@@ -25,6 +26,8 @@ export function useCreateProductMapping() {
       createProductMapping(payload),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["product-mappings"] });
+      queryClient.invalidateQueries({ queryKey: ["products"] });
+      queryClient.invalidateQueries({ queryKey: ["sync-logs"] });
     },
   });
 }
@@ -42,6 +45,8 @@ export function useUpdateProductMapping() {
     }) => updateProductMapping(id, payload),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["product-mappings"] });
+      queryClient.invalidateQueries({ queryKey: ["products"] });
+      queryClient.invalidateQueries({ queryKey: ["sync-logs"] });
     },
   });
 }
@@ -53,6 +58,21 @@ export function useDeleteProductMapping() {
     mutationFn: (id: string) => deleteProductMapping(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["product-mappings"] });
+      queryClient.invalidateQueries({ queryKey: ["products"] });
+      queryClient.invalidateQueries({ queryKey: ["sync-logs"] });
+    },
+  });
+}
+
+export function useUnpublishProductMapping() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (id: string) => unpublishProductMapping(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["product-mappings"] });
+      queryClient.invalidateQueries({ queryKey: ["products"] });
+      queryClient.invalidateQueries({ queryKey: ["sync-logs"] });
     },
   });
 }
