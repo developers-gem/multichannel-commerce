@@ -78,7 +78,7 @@ export default function SyncDashboardPage() {
             </div>
             <div>
               <h1 className="text-2xl font-bold text-slate-100">Sync Operations Dashboard</h1>
-              <p className="text-sm text-slate-400">
+              <p className="text-sm text-slate-800">
                 Real-time operational monitoring & channel synchronization engine
               </p>
             </div>
@@ -91,7 +91,7 @@ export default function SyncDashboardPage() {
           </span>
           <button
             onClick={handleManualRefresh}
-            className="flex items-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-sm font-medium border border-slate-700 transition-colors"
+            className="flex items-center gap-2 px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-800 rounded-xl text-sm font-medium border border-slate-700 transition-colors"
           >
             <RefreshCw className="h-4 w-4" />
             Refresh
@@ -103,20 +103,20 @@ export default function SyncDashboardPage() {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="p-5 rounded-2xl bg-slate-900/40 border border-slate-800">
           <div className="flex items-center justify-between">
-            <span className="text-sm font-medium text-slate-400">Master Products</span>
+            <span className="text-sm font-medium text-slate-800">Master Products</span>
             <Layers className="h-5 w-5 text-indigo-400" />
           </div>
           <div className="mt-3 flex items-baseline justify-between">
             <span className="text-3xl font-bold text-slate-100">
               {summaryLoading ? "..." : summary?.summaryMetrics.totalMasterProducts ?? 0}
             </span>
-            <span className="text-xs text-slate-400">Single Source of Truth</span>
+            <span className="text-xs text-slate-800">Single Source of Truth</span>
           </div>
         </div>
 
         <div className="p-5 rounded-2xl bg-slate-900/40 border border-slate-800">
           <div className="flex items-center justify-between">
-            <span className="text-sm font-medium text-slate-400">Connected Channels</span>
+            <span className="text-sm font-medium text-slate-800">Connected Channels</span>
             <Store className="h-5 w-5 text-cyan-400" />
           </div>
           <div className="mt-3 flex items-baseline justify-between">
@@ -129,14 +129,14 @@ export default function SyncDashboardPage() {
 
         <div className="p-5 rounded-2xl bg-slate-900/40 border border-slate-800">
           <div className="flex items-center justify-between">
-            <span className="text-sm font-medium text-slate-400">Published Listings</span>
+            <span className="text-sm font-medium text-slate-800">Published Listings</span>
             <CheckCircle2 className="h-5 w-5 text-emerald-400" />
           </div>
           <div className="mt-3 flex items-baseline justify-between">
             <span className="text-3xl font-bold text-emerald-400">
               {summaryLoading ? "..." : summary?.summaryMetrics.totalPublishedListings ?? 0}
             </span>
-            <span className="text-xs text-slate-400">
+            <span className="text-xs text-slate-800">
               Unpublished: {summary?.summaryMetrics.unpublishedMappings ?? 0}
             </span>
           </div>
@@ -144,14 +144,14 @@ export default function SyncDashboardPage() {
 
         <div className="p-5 rounded-2xl bg-slate-900/40 border border-slate-800">
           <div className="flex items-center justify-between">
-            <span className="text-sm font-medium text-slate-400">Overall Success Rate</span>
+            <span className="text-sm font-medium text-slate-800">Overall Success Rate</span>
             <ShieldCheck className="h-5 w-5 text-purple-400" />
           </div>
           <div className="mt-3 flex items-baseline justify-between">
             <span className="text-3xl font-bold text-purple-400">
               {summaryLoading ? "..." : `${summary?.summaryMetrics.syncSuccessRate ?? 0}%`}
             </span>
-            <span className="text-xs text-slate-400">Historical Jobs</span>
+            <span className="text-xs text-slate-800">Historical Jobs</span>
           </div>
         </div>
       </div>
@@ -201,7 +201,7 @@ export default function SyncDashboardPage() {
 
       {/* Platform Statistics Section */}
       <div className="space-y-4">
-        <h2 className="text-lg font-semibold text-slate-200">Platform Sync Statistics</h2>
+        <h2 className="text-lg font-semibold text-slate-800">Platform Sync Statistics</h2>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {(summary?.platformStats || []).map((stat) => (
             <div
@@ -218,25 +218,25 @@ export default function SyncDashboardPage() {
               </div>
               <div className="grid grid-cols-2 gap-3 text-xs">
                 <div>
-                  <span className="text-slate-400">Published Mappings:</span>
+                  <span className="text-slate-800">Published Mappings:</span>
                   <div className="text-base font-semibold text-emerald-400 mt-0.5">
                     {stat.publishedMappings}
                   </div>
                 </div>
                 <div>
-                  <span className="text-slate-400">Pending / Processing:</span>
+                  <span className="text-slate-800">Pending / Processing:</span>
                   <div className="text-base font-semibold text-amber-400 mt-0.5">
                     {stat.pendingJobs + stat.processingJobs}
                   </div>
                 </div>
                 <div>
-                  <span className="text-slate-400">Completed Jobs:</span>
+                  <span className="text-slate-800">Completed Jobs:</span>
                   <div className="text-base font-semibold text-blue-400 mt-0.5">
                     {stat.completedJobs}
                   </div>
                 </div>
                 <div>
-                  <span className="text-slate-400">Failed Jobs:</span>
+                  <span className="text-slate-800">Failed Jobs:</span>
                   <div className="text-base font-semibold text-rose-400 mt-0.5">
                     {stat.failedJobs}
                   </div>
@@ -249,7 +249,7 @@ export default function SyncDashboardPage() {
 
       {/* Connected Channel Health Section */}
       <div className="space-y-4">
-        <h2 className="text-lg font-semibold text-slate-200">Connected Channel Health</h2>
+        <h2 className="text-lg font-semibold text-slate-800">Connected Channel Health</h2>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {(summary?.integrationsHealth || []).map((integration) => (
             <div
@@ -258,8 +258,8 @@ export default function SyncDashboardPage() {
             >
               <div className="space-y-1">
                 <div className="flex items-center gap-2">
-                  <span className="font-medium text-slate-200 text-sm">{integration.storeName}</span>
-                  <span className="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700">
+                  <span className="font-medium text-slate-800 text-sm">{integration.storeName}</span>
+                  <span className="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded bg-slate-800 text-slate-200 border border-slate-700">
                     {integration.platform}
                   </span>
                 </div>
@@ -273,7 +273,7 @@ export default function SyncDashboardPage() {
                 className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-medium border border-slate-700 transition-colors disabled:opacity-50 flex items-center gap-1.5"
               >
                 {testingId === integration._id ? (
-                  <RotateCw className="h-3.5 w-3.5 animate-spin text-slate-400" />
+                  <RotateCw className="h-3.5 w-3.5 animate-spin text-slate-800" />
                 ) : (
                   <ShieldCheck className="h-3.5 w-3.5 text-emerald-400" />
                 )}
@@ -317,7 +317,7 @@ export default function SyncDashboardPage() {
 
                   return (
                     <tr key={log._id} className="hover:bg-rose-900/10">
-                      <td className="p-3 font-mono font-bold text-slate-200">
+                      <td className="p-3 font-mono font-bold text-slate-800">
                         {prod?.sku || "N/A"}
                       </td>
                       <td className="p-3">{integ?.platform || "N/A"}</td>
@@ -355,7 +355,7 @@ export default function SyncDashboardPage() {
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <h2 className="text-lg font-semibold text-slate-100">Recent Sync Activity Audit Log</h2>
-            <p className="text-xs text-slate-400">Complete historical sync trail across all channels</p>
+            <p className="text-xs text-slate-800">Complete historical sync trail across all channels</p>
           </div>
 
           {/* Server-Side Filters */}
@@ -366,7 +366,7 @@ export default function SyncDashboardPage() {
                 setStatusFilter(e.target.value);
                 setPage(1);
               }}
-              className="bg-slate-950 border border-slate-800 text-slate-200 text-xs rounded-xl px-3 py-2 focus:outline-none focus:border-indigo-500"
+              className="bg-slate-950 border border-slate-200 text-slate-200 text-xs rounded-xl px-3 py-2 focus:outline-none focus:border-indigo-500"
             >
               <option value="ALL">All Statuses</option>
               <option value="PENDING">PENDING</option>
@@ -408,7 +408,7 @@ export default function SyncDashboardPage() {
         {/* Sync Logs Table */}
         <div className="overflow-x-auto rounded-xl border border-slate-800 bg-slate-950/40">
           <table className="w-full text-left text-xs">
-            <thead className="bg-slate-900 text-slate-400 font-semibold border-b border-slate-800">
+            <thead className="bg-slate-900 text-slate-200 font-semibold border-b border-slate-800">
               <tr>
                 <th className="p-3.5">Master SKU</th>
                 <th className="p-3.5">Title</th>
@@ -471,10 +471,10 @@ export default function SyncDashboardPage() {
                         </span>
                       </td>
                       <td className="p-3.5">{log.attempts} / {log.maxAttempts}</td>
-                      <td className="p-3.5 text-slate-400">
+                      <td className="p-3.5 text-slate-200">
                         {new Date(log.createdAt).toLocaleTimeString()}
                       </td>
-                      <td className="p-3.5 text-slate-400">
+                      <td className="p-3.5 text-slate-200">
                         {log.completedAt ? new Date(log.completedAt).toLocaleTimeString() : "-"}
                       </td>
                       <td className="p-3.5 text-right">
@@ -499,7 +499,7 @@ export default function SyncDashboardPage() {
                                 updatedAt: "",
                               })
                             }
-                            className="p-1.5 text-slate-400 hover:text-slate-100 hover:bg-slate-800 rounded-lg transition-colors inline-flex items-center gap-1 text-xs"
+                            className="p-1.5 text-slate-200 hover:text-slate-100 hover:bg-slate-800 rounded-lg transition-colors inline-flex items-center gap-1 text-xs"
                             title="View product channel details"
                           >
                             <Eye className="h-4 w-4 text-indigo-400" />
@@ -518,7 +518,7 @@ export default function SyncDashboardPage() {
         {/* Pagination Bar */}
         {logsData?.pagination && logsData.pagination.totalPages > 1 && (
           <div className="flex items-center justify-between pt-3">
-            <span className="text-xs text-slate-400">
+            <span className="text-xs text-slate-800">
               Page {logsData.pagination.page} of {logsData.pagination.totalPages} ({logsData.pagination.total} total logs)
             </span>
             <div className="flex items-center gap-2">
