@@ -5,6 +5,7 @@ import {
   GitCompare,
   FileSpreadsheet,
   RefreshCw,
+  Activity,
   Settings,
   LogOut,
 } from "lucide-react";
@@ -14,6 +15,11 @@ export const sidebarItems = [
     title: "Dashboard",
     href: "/dashboard",
     icon: LayoutDashboard,
+  },
+  {
+    title: "Sync Operations",
+    href: "/sync-dashboard",
+    icon: Activity,
   },
   {
     title: "Integrations",

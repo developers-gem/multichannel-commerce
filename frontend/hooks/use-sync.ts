@@ -1,11 +1,20 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  getDashboardSummary,
   getSyncLogById,
   getSyncLogs,
   retrySync,
   triggerProductMappingSync,
 } from "@/services/sync.service";
 import { SyncAction, SyncLogFilters } from "@/types/sync";
+
+export function useSyncDashboardSummary() {
+  return useQuery({
+    queryKey: ["sync-dashboard-summary"],
+    queryFn: () => getDashboardSummary(),
+    refetchInterval: 5000, // Poll every 5 seconds for live background worker updates
+  });
+}
 
 export function useSyncLogs(filters: SyncLogFilters = {}) {
   return useQuery({
@@ -35,6 +44,7 @@ export function useTriggerSync() {
       action?: SyncAction;
     }) => triggerProductMappingSync(productMappingId, action),
     onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["sync-dashboard-summary"] });
       queryClient.invalidateQueries({ queryKey: ["sync-logs"] });
       queryClient.invalidateQueries({ queryKey: ["product-mappings"] });
     },
@@ -47,6 +57,7 @@ export function useRetrySync() {
   return useMutation({
     mutationFn: (syncLogId: string) => retrySync(syncLogId),
     onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["sync-dashboard-summary"] });
       queryClient.invalidateQueries({ queryKey: ["sync-logs"] });
       queryClient.invalidateQueries({ queryKey: ["product-mappings"] });
     },

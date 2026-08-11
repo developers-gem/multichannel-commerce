@@ -6,6 +6,7 @@ import { ApiError } from "../../utils/ApiError";
 import { HTTP_STATUS } from "../../shared/constants/http-status.constants";
 import { SYNC_MESSAGES } from "./sync.messages";
 import { SyncJobAction, SyncLogStatus } from "./sync.types";
+import { Platform } from "../../shared/enums/platform.enum";
 import { objectIdSchema, productMappingIdParamSchema } from "./sync.validation";
 
 export const manualSyncProduct = asyncHandler(
@@ -29,6 +30,15 @@ export const manualSyncProduct = asyncHandler(
   }
 );
 
+export const getDashboardSummary = asyncHandler(
+  async (_req: Request, res: Response) => {
+    const data = await syncService.getDashboardSummary();
+    return res.status(HTTP_STATUS.OK).json(
+      new ApiResponse(true, "Sync dashboard summary fetched successfully", data)
+    );
+  }
+);
+
 export const getAllSyncLogs = asyncHandler(
   async (req: Request, res: Response) => {
     const page = Number(req.query.page) || 1;
@@ -36,6 +46,8 @@ export const getAllSyncLogs = asyncHandler(
 
     const filters = {
       status: req.query.status as SyncLogStatus,
+      action: req.query.action as SyncJobAction,
+      platform: req.query.platform as Platform,
       integrationId: req.query.integrationId as string,
       productMappingId: req.query.productMappingId as string,
       productId: req.query.productId as string,

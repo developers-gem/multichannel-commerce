@@ -70,7 +70,46 @@ export interface SyncLogFilters {
   limit?: number;
   status?: SyncStatus;
   action?: SyncAction;
+  platform?: string;
   integrationId?: string;
   productMappingId?: string;
   productId?: string;
 }
+
+export interface SummaryMetrics {
+  totalMasterProducts: number;
+  totalConnectedIntegrations: number;
+  totalPublishedListings: number;
+  pendingSyncJobs: number;
+  processingSyncJobs: number;
+  completedSyncJobs: number;
+  failedSyncJobs: number;
+  unpublishedMappings: number;
+  syncSuccessRate: number;
+}
+
+export interface PlatformStat {
+  platform: string;
+  connectedIntegrations: number;
+  publishedMappings: number;
+  pendingJobs: number;
+  processingJobs: number;
+  completedJobs: number;
+  failedJobs: number;
+}
+
+export interface IntegrationHealthItem {
+  _id: string;
+  platform: string;
+  storeName: string;
+  storeUrl?: string;
+  isActive: boolean;
+}
+
+export interface DashboardSummaryData {
+  summaryMetrics: SummaryMetrics;
+  platformStats: PlatformStat[];
+  integrationsHealth: IntegrationHealthItem[];
+}
+
+export type DashboardSummaryResponse = ApiResponse<DashboardSummaryData>;

@@ -456,11 +456,12 @@ export async function processSyncJob(job: Job<ISyncJobPayload>) {
       throw new UnrecoverableError(errorMsg);
     }
 
-    // Step 5: Check if superseded by a newer job for the same ProductMapping
+    // Step 5: Check if superseded by a newer UPDATE job for the same ProductMapping
     const newerLogExists = await SyncLog.exists({
       productMappingId,
+      action: SyncJobAction.UPDATE,
       createdAt: { $gt: currentSyncLog.createdAt },
-      status: { $in: [SyncLogStatus.PROCESSING, SyncLogStatus.COMPLETED] },
+      _id: { $ne: currentSyncLog._id },
     });
 
     if (action === SyncJobAction.UPDATE && newerLogExists) {

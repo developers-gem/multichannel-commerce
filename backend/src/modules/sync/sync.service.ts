@@ -5,6 +5,8 @@ import ProductMapping from "../product-mappings/product-mapping.model";
 import SyncLog from "./sync.model";
 import { productSyncQueue } from "./sync.queue";
 import { ISyncJobPayload, SyncJobAction, SyncLogStatus } from "./sync.types";
+import { SyncStatus } from "../../shared/enums/sync-status.enum";
+import { Platform } from "../../shared/enums/platform.enum";
 import { ApiError } from "../../utils/ApiError";
 import { HTTP_STATUS } from "../../shared/constants/http-status.constants";
 import { SYNC_MESSAGES } from "./sync.messages";
@@ -140,6 +142,87 @@ class SyncService {
   }
 
   /**
+   * Get Dashboard Summary Metrics, Platform Statistics & Integration Health (No credentials)
+   */
+  async getDashboardSummary() {
+    const [
+      totalMasterProducts,
+      totalConnectedIntegrations,
+      totalPublishedListings,
+      pendingSyncJobs,
+      processingSyncJobs,
+      completedSyncJobs,
+      failedSyncJobs,
+      unpublishedMappings,
+      activeIntegrations,
+    ] = await Promise.all([
+      Product.countDocuments({ isDeleted: false }),
+      Integration.countDocuments({ isActive: true }),
+      ProductMapping.countDocuments({ isDeleted: false, isActive: true, syncStatus: SyncStatus.SYNCED }),
+      SyncLog.countDocuments({ status: SyncLogStatus.PENDING }),
+      SyncLog.countDocuments({ status: SyncLogStatus.PROCESSING }),
+      SyncLog.countDocuments({ status: SyncLogStatus.COMPLETED }),
+      SyncLog.countDocuments({ status: SyncLogStatus.FAILED }),
+      ProductMapping.countDocuments({ isDeleted: false, $or: [{ isActive: false }, { syncStatus: SyncStatus.UNPUBLISHED }] }),
+      Integration.find({ isActive: true }).select("_id platform storeName storeUrl isActive").sort({ platform: 1, storeName: 1 }),
+    ]);
+
+    const totalFinishedJobs = completedSyncJobs + failedSyncJobs;
+    const syncSuccessRate = totalFinishedJobs > 0
+      ? Number(((completedSyncJobs / totalFinishedJobs) * 100).toFixed(1))
+      : 0;
+
+    // Platform statistics breakdown for SHOPIFY, EBAY, CUSTOM_WEBSITE
+    const platforms = [Platform.SHOPIFY, Platform.EBAY, Platform.CUSTOM_WEBSITE];
+    const platformStats = await Promise.all(
+      platforms.map(async (platform) => {
+        const platformIntegrations = activeIntegrations.filter((i) => i.platform === platform);
+        const integrationIds = platformIntegrations.map((i) => i._id);
+
+        const [
+          publishedMappings,
+          pendingJobs,
+          processingJobs,
+          completedJobs,
+          failedJobs,
+        ] = await Promise.all([
+          ProductMapping.countDocuments({ integrationId: { $in: integrationIds }, isDeleted: false, isActive: true, syncStatus: SyncStatus.SYNCED }),
+          SyncLog.countDocuments({ integrationId: { $in: integrationIds }, status: SyncLogStatus.PENDING }),
+          SyncLog.countDocuments({ integrationId: { $in: integrationIds }, status: SyncLogStatus.PROCESSING }),
+          SyncLog.countDocuments({ integrationId: { $in: integrationIds }, status: SyncLogStatus.COMPLETED }),
+          SyncLog.countDocuments({ integrationId: { $in: integrationIds }, status: SyncLogStatus.FAILED }),
+        ]);
+
+        return {
+          platform,
+          connectedIntegrations: platformIntegrations.length,
+          publishedMappings,
+          pendingJobs,
+          processingJobs,
+          completedJobs,
+          failedJobs,
+        };
+      })
+    );
+
+    return {
+      summaryMetrics: {
+        totalMasterProducts,
+        totalConnectedIntegrations,
+        totalPublishedListings,
+        pendingSyncJobs,
+        processingSyncJobs,
+        completedSyncJobs,
+        failedSyncJobs,
+        unpublishedMappings,
+        syncSuccessRate,
+      },
+      platformStats,
+      integrationsHealth: activeIntegrations,
+    };
+  }
+
+  /**
    * Get Paginated Sync Logs with safe populated references (Credentials stripped)
    */
   async getSyncLogs(
@@ -147,25 +230,32 @@ class SyncService {
     limit: number = 20,
     filters: {
       status?: SyncLogStatus;
+      action?: SyncJobAction;
+      platform?: Platform;
       integrationId?: string;
       productMappingId?: string;
       productId?: string;
     } = {}
   ) {
     const skip = (page - 1) * limit;
-
     const query: Record<string, unknown> = {};
 
     if (filters.status) query.status = filters.status;
+    if (filters.action) query.action = filters.action;
     if (filters.integrationId) query.integrationId = filters.integrationId;
     if (filters.productMappingId) query.productMappingId = filters.productMappingId;
     if (filters.productId) query.productId = filters.productId;
+
+    if (filters.platform) {
+      const platformIntegrations = await Integration.find({ platform: filters.platform }).select("_id");
+      query.integrationId = { $in: platformIntegrations.map((i) => i._id) };
+    }
 
     const [logs, total] = await Promise.all([
       SyncLog.find(query)
         .populate("productId", "sku title")
         .populate("integrationId", "platform storeName storeUrl")
-        .populate("productMappingId", "externalProductId externalVariantId externalSku")
+        .populate("productMappingId", "externalProductId externalVariantId externalSku syncStatus")
         .skip(skip)
         .limit(limit)
         .sort({ createdAt: -1 }),

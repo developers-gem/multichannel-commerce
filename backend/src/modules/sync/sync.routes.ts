@@ -2,12 +2,16 @@ import { Router } from "express";
 import { authenticate } from "../../middlewares/auth.middleware";
 import {
   manualSyncProduct,
+  getDashboardSummary,
   getAllSyncLogs,
   getSyncLogById,
   retrySyncLog,
 } from "./sync.controller";
 
 const router = Router();
+
+// Dashboard Aggregation Summary
+router.get("/dashboard-summary", authenticate, getDashboardSummary);
 
 // Manual Sync trigger for a Product Mapping
 router.post("/products/:productMappingId", authenticate, manualSyncProduct);
