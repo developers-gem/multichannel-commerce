@@ -77,6 +77,15 @@ class SyncService {
     };
 
     // 6. Push job to BullMQ queue
+    if (!productSyncQueue) {
+      return {
+        syncLogId: syncLog._id,
+        jobId: syncLog._id.toString(),
+        status: SyncLogStatus.PENDING,
+        fallback: true,
+      };
+    }
+
     try {
       const job = await productSyncQueue.add("syncJob", jobPayload, {
         jobId: syncLog._id.toString(),

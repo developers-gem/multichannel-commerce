@@ -13,6 +13,8 @@ import productMappingRoutes from "./modules/product-mappings/product-mapping.rou
 import csvImportRoutes from "./modules/csv-import/csv-import.routes";
 import syncRoutes from "./modules/sync/sync.routes";
 import catalogImportRoutes from "./modules/catalog-import/catalog-import.routes";
+import dns from "dns";
+dns.setServers(["1.1.1.1","8.8.8.8"]);
 
 const app = express();
 

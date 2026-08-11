@@ -1,6 +1,10 @@
 import mongoose from "mongoose";
 import { env } from "../config/env";
 
+import dns from "dns";
+dns.setServers(["1.1.1.1","8.8.8.8"]); // Set DNS servers to Cloudflare and Google
+
+
 const connectDB = async () => {
   try {
     await mongoose.connect(env.MONGO_URI);
