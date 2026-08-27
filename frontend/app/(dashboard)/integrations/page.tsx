@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useEffect, useState } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
 import { Plus, Search } from "lucide-react";
 import { toast } from "sonner";
 
@@ -13,6 +14,28 @@ import IntegrationTable from "@/components/integrations/integration-table";
 import IntegrationFormModal from "@/components/integrations/integration-form-modal";
 import IntegrationDeleteDialog from "@/components/integrations/integration-delete-dialog";
 import ImportResultModal from "@/components/integrations/import-result-modal";
+
+function ShopifyCallbackListener({ refetch }: { refetch: () => void }) {
+  const searchParams = useSearchParams();
+  const router = useRouter();
+
+  useEffect(() => {
+    const shopifySuccess = searchParams.get("shopify_success");
+    const store = searchParams.get("store");
+    const shopifyError = searchParams.get("shopify_error");
+
+    if (shopifySuccess === "true") {
+      toast.success(`Shopify store ${store ? `"${store}"` : ""} connected successfully!`);
+      refetch();
+      router.replace("/integrations");
+    } else if (shopifyError) {
+      toast.error(`Shopify OAuth failed: ${shopifyError}`);
+      router.replace("/integrations");
+    }
+  }, [searchParams, refetch, router]);
+
+  return null;
+}
 
 export default function IntegrationsPage() {
   const [search, setSearch] = useState("");
@@ -31,7 +54,7 @@ export default function IntegrationsPage() {
   // Test Connection loading state
   const [testingId, setTestingId] = useState<string | null>(null);
 
-  const { data, isLoading, isError, error } = useIntegrations();
+  const { data, isLoading, isError, error, refetch } = useIntegrations();
   const importMutation = useCatalogImport();
   const testConnectionMutation = useTestIntegrationConnection();
 
@@ -105,6 +128,10 @@ export default function IntegrationsPage() {
 
   return (
     <div className="space-y-6">
+      <Suspense fallback={null}>
+        <ShopifyCallbackListener refetch={refetch} />
+      </Suspense>
+
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>

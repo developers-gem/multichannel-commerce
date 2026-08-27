@@ -46,11 +46,11 @@ export const sidebarItems = [
     href: "/sync-queue",
     icon: RefreshCw,
   },
-  {
-    title: "Settings",
-    href: "/settings",
-    icon: Settings,
-  },
+  // {
+  //   title: "Settings",
+  //   href: "/settings",
+  //   icon: Settings,
+  // },
 ];
 
 export const logoutItem = {

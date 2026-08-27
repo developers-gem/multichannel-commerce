@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Loader2, X } from "lucide-react";
+import { ExternalLink, Loader2, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -12,6 +12,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Integration, PlatformType } from "@/types/integration";
 import { useCreateIntegration, useUpdateIntegration } from "@/hooks/use-integrations";
+
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api";
 
 const integrationSchema = z.object({
   platform: z.enum(["SHOPIFY", "EBAY", "CUSTOM_WEBSITE"] as const),
@@ -56,7 +58,7 @@ export default function IntegrationFormModal({
     handleSubmit,
     reset,
     watch,
-    setValue,
+    getValues,
     formState: { errors },
   } = useForm<IntegrationFormValues>({
     resolver: zodResolver(integrationSchema),
@@ -77,6 +79,7 @@ export default function IntegrationFormModal({
   });
 
   const selectedPlatform = watch("platform");
+  const storeUrlValue = watch("storeUrl");
 
   useEffect(() => {
     if (initialData) {
@@ -115,6 +118,18 @@ export default function IntegrationFormModal({
   if (!isOpen) return null;
 
   const isSubmitting = createMutation.isPending || updateMutation.isPending;
+
+  const handleShopifyOAuthConnect = () => {
+    let rawUrl = (storeUrlValue || "").trim();
+    if (!rawUrl) {
+      toast.error("Please enter your Shopify store domain (e.g. my-store.myshopify.com)");
+      return;
+    }
+
+    rawUrl = rawUrl.replace(/^https?:\/\//, "").replace(/\/+$/, "");
+    const authUrl = `${API_BASE_URL}/integrations/shopify/authorize?shop=${encodeURIComponent(rawUrl)}`;
+    window.location.href = authUrl;
+  };
 
   const onSubmit = (values: IntegrationFormValues) => {
     // Normalize URL format
@@ -217,24 +232,26 @@ export default function IntegrationFormModal({
             </select>
           </div>
 
-          {/* Store Name */}
-          <div>
-            <Label htmlFor="storeName">Store / Account Name</Label>
-            <Input
-              id="storeName"
-              placeholder="e.g. Shopify Store A"
-              {...register("storeName")}
-            />
-            {errors.storeName && (
-              <p className="mt-1 text-xs text-red-500">{errors.storeName.message}</p>
-            )}
-          </div>
+          {/* Store Name (For Non-Shopify or Editing) */}
+          {selectedPlatform !== "SHOPIFY" && (
+            <div>
+              <Label htmlFor="storeName">Store / Account Name</Label>
+              <Input
+                id="storeName"
+                placeholder="e.g. My Store"
+                {...register("storeName")}
+              />
+              {errors.storeName && (
+                <p className="mt-1 text-xs text-red-500">{errors.storeName.message}</p>
+              )}
+            </div>
+          )}
 
           {/* Store URL */}
           <div>
             <Label htmlFor="storeUrl">
               {selectedPlatform === "SHOPIFY"
-                ? "Store Domain (e.g. store.myshopify.com)"
+                ? "Shopify Store Domain (e.g. my-store.myshopify.com)"
                 : selectedPlatform === "CUSTOM_WEBSITE"
                 ? "Base API URL (e.g. https://mycustomsite.com)"
                 : "Store / Seller Profile URL"}
@@ -255,19 +272,33 @@ export default function IntegrationFormModal({
             )}
           </div>
 
-          {/* Shopify Credential Form */}
-          {selectedPlatform === "SHOPIFY" && (
+          {/* Shopify Credential Form & OAuth Connect Button */}
+          {selectedPlatform === "SHOPIFY" && !isEditing && (
+            <div className="pt-3 border-t space-y-3">
+              <Button
+                type="button"
+                onClick={handleShopifyOAuthConnect}
+                className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-medium flex items-center justify-center gap-2 py-2.5 rounded-xl shadow transition-colors"
+              >
+                <ExternalLink className="h-4 w-4" />
+                Connect Shopify (OAuth)
+              </Button>
+              <p className="text-xs text-slate-500 text-center">
+                Redirects securely to Shopify to authorize store access. No manual API tokens required.
+              </p>
+            </div>
+          )}
+
+          {/* Shopify Edit Fallback */}
+          {selectedPlatform === "SHOPIFY" && isEditing && (
             <div>
-              <Label htmlFor="accessToken">Admin GraphQL Access Token</Label>
+              <Label htmlFor="accessToken">Admin Access Token (Optional update)</Label>
               <Input
                 id="accessToken"
                 type="password"
-                placeholder={isEditing ? "Leave blank to keep existing access token" : "shpat_xxxxxxxxxxxxxxxx"}
+                placeholder="Leave blank to keep existing authorization"
                 {...register("accessToken")}
               />
-              <p className="mt-1 text-xs text-slate-500">
-                Sensitive Admin API access token for Shopify Admin GraphQL API.
-              </p>
             </div>
           )}
 
@@ -353,24 +384,26 @@ export default function IntegrationFormModal({
             </div>
           )}
 
-          <div className="flex items-center justify-end gap-3 border-t pt-4">
-            <Button type="button" variant="outline" onClick={onClose}>
-              Cancel
-            </Button>
+          {selectedPlatform !== "SHOPIFY" && (
+            <div className="flex items-center justify-end gap-3 border-t pt-4">
+              <Button type="button" variant="outline" onClick={onClose}>
+                Cancel
+              </Button>
 
-            <Button type="submit" disabled={isSubmitting}>
-              {isSubmitting ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Connecting...
-                </>
-              ) : isEditing ? (
-                "Update Channel"
-              ) : (
-                "Connect Store"
-              )}
-            </Button>
-          </div>
+              <Button type="submit" disabled={isSubmitting}>
+                {isSubmitting ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Connecting...
+                  </>
+                ) : isEditing ? (
+                  "Update Channel"
+                ) : (
+                  "Connect Store"
+                )}
+              </Button>
+            </div>
+          )}
         </form>
       </div>
     </div>

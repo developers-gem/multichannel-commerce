@@ -94,3 +94,18 @@ export const testIntegrationConnection = asyncHandler(
     );
   }
 );
+
+export const initiateShopifyAuth = asyncHandler(
+  async (req: Request, res: Response) => {
+    const shop = String(req.query.shop || "");
+    const authUrl = integrationService.getShopifyAuthorizeUrl(shop);
+    return res.redirect(authUrl);
+  }
+);
+
+export const handleShopifyCallback = asyncHandler(
+  async (req: Request, res: Response) => {
+    const redirectUrl = await integrationService.handleShopifyCallback(req.query);
+    return res.redirect(redirectUrl);
+  }
+);

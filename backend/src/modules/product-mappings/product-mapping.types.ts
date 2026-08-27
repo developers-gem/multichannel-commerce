@@ -1,5 +1,6 @@
 import { Document, Types } from "mongoose";
 import { SyncStatus } from "../../shared/enums/sync-status.enum";
+import { assertPostgresVersion } from "bullmq";
 
 export interface IProductMapping extends Document {
   productId: Types.ObjectId;
@@ -15,4 +16,4 @@ export interface IProductMapping extends Document {
   isDeleted: boolean;
   createdAt: Date;
   updatedAt: Date;
-}
+} 
