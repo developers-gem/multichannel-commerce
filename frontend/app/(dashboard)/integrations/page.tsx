@@ -1,13 +1,13 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { Plus, Search } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { CatalogImportSummary, Integration } from "@/types/integration";
+import { CatalogImportSummary, Integration, PlatformType } from "@/types/integration";
 import { useIntegrations, useTestIntegrationConnection } from "@/hooks/use-integrations";
 import { useCatalogImport } from "@/hooks/use-catalog-import";
 import IntegrationTable from "@/components/integrations/integration-table";
@@ -37,11 +37,32 @@ function ShopifyCallbackListener({ refetch }: { refetch: () => void }) {
   return null;
 }
 
+function ConnectQueryListener({
+  onOpenConnect,
+}: {
+  onOpenConnect: (platform: PlatformType) => void;
+}) {
+  const searchParams = useSearchParams();
+
+  useEffect(() => {
+    const connectParam = searchParams.get("connect") || searchParams.get("platform");
+    if (connectParam) {
+      const platformUpper = connectParam.toUpperCase();
+      if (["SHOPIFY", "EBAY", "CUSTOM_WEBSITE"].includes(platformUpper)) {
+        onOpenConnect(platformUpper as PlatformType);
+      }
+    }
+  }, [searchParams, onOpenConnect]);
+
+  return null;
+}
+
 export default function IntegrationsPage() {
   const [search, setSearch] = useState("");
 
   const [isFormModalOpen, setIsFormModalOpen] = useState(false);
   const [selectedIntegration, setSelectedIntegration] = useState<Integration | null>(null);
+  const [initialPlatform, setInitialPlatform] = useState<PlatformType | null>(null);
 
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [integrationToDelete, setIntegrationToDelete] = useState<Integration | null>(null);
@@ -60,8 +81,15 @@ export default function IntegrationsPage() {
 
   const handleOpenAddModal = () => {
     setSelectedIntegration(null);
+    setInitialPlatform("SHOPIFY");
     setIsFormModalOpen(true);
   };
+
+  const handleOpenConnectForPlatform = useCallback((platform: PlatformType) => {
+    setSelectedIntegration(null);
+    setInitialPlatform(platform);
+    setIsFormModalOpen(true);
+  }, []);
 
   const handleOpenEditModal = (integration: Integration) => {
     setSelectedIntegration(integration);
@@ -130,6 +158,7 @@ export default function IntegrationsPage() {
     <div className="space-y-6">
       <Suspense fallback={null}>
         <ShopifyCallbackListener refetch={refetch} />
+        <ConnectQueryListener onOpenConnect={handleOpenConnectForPlatform} />
       </Suspense>
 
       {/* Header */}
@@ -187,6 +216,7 @@ export default function IntegrationsPage() {
         isOpen={isFormModalOpen}
         onClose={() => setIsFormModalOpen(false)}
         initialData={selectedIntegration}
+        initialPlatform={initialPlatform}
       />
 
       {/* Delete Dialog */}

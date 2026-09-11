@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -41,12 +41,14 @@ interface IntegrationFormModalProps {
   isOpen: boolean;
   onClose: () => void;
   initialData?: Integration | null;
+  initialPlatform?: PlatformType | null;
 }
 
 export default function IntegrationFormModal({
   isOpen,
   onClose,
   initialData,
+  initialPlatform,
 }: IntegrationFormModalProps) {
   const isEditing = Boolean(initialData);
 
@@ -58,12 +60,11 @@ export default function IntegrationFormModal({
     handleSubmit,
     reset,
     watch,
-    getValues,
     formState: { errors },
   } = useForm<IntegrationFormValues>({
     resolver: zodResolver(integrationSchema),
     defaultValues: {
-      platform: "SHOPIFY",
+      platform: initialPlatform || "SHOPIFY",
       storeName: "",
       storeUrl: "",
       accessToken: "",
@@ -99,7 +100,7 @@ export default function IntegrationFormModal({
       });
     } else {
       reset({
-        platform: "SHOPIFY",
+        platform: initialPlatform || "SHOPIFY",
         storeName: "",
         storeUrl: "",
         accessToken: "",
@@ -113,7 +114,7 @@ export default function IntegrationFormModal({
         isActive: true,
       });
     }
-  }, [initialData, reset, isOpen]);
+  }, [initialData, initialPlatform, reset, isOpen]);
 
   if (!isOpen) return null;
 

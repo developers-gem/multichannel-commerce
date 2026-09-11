@@ -1,12 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import { Plus, Search } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { Plus, Search, Layers, ArrowRight, Plug } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Product } from "@/types/product";
 import { useProducts } from "@/hooks/use-products";
+import { useIntegrations } from "@/hooks/use-integrations";
 import ProductTable from "@/components/products/product-table";
 import ProductFormModal from "@/components/products/product-form-modal";
 import ProductDeleteDialog from "@/components/products/product-delete-dialog";
@@ -14,6 +16,8 @@ import ProductSyncModal from "@/components/products/product-sync-modal";
 import ProductPublishModal from "@/components/products/product-publish-modal";
 
 export default function ProductsPage() {
+  const router = useRouter();
+
   const [page, setPage] = useState(1);
   const [limit] = useState(20);
   const [search, setSearch] = useState("");
@@ -31,6 +35,11 @@ export default function ProductsPage() {
   const [productToPublish, setProductToPublish] = useState<Product | null>(null);
 
   const { data, isLoading, isError, error } = useProducts(page, limit, search);
+  const { data: integrationsData, isLoading: isIntegrationsLoading } = useIntegrations();
+
+  const integrationsList = integrationsData?.data || [];
+  const activeIntegrations = integrationsList.filter((i) => i.isActive);
+  const hasIntegrations = activeIntegrations.length > 0;
 
   const handleOpenAddModal = () => {
     setSelectedProduct(null);
@@ -78,6 +87,68 @@ export default function ProductsPage() {
           Add Product
         </Button>
       </div>
+
+      {/* Contextual Next Step Banner */}
+      {!isIntegrationsLoading && (
+        <div className="rounded-2xl border border-indigo-100 bg-indigo-50/70 p-5 text-indigo-950 shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+          <div className="flex items-start gap-3.5">
+            <div className="rounded-xl bg-indigo-100 p-2.5 text-indigo-700 shrink-0 mt-0.5">
+              <Layers className="h-5 w-5" />
+            </div>
+            <div>
+              <h3 className="text-sm font-bold text-indigo-950">
+                Your Master Products are ready.
+              </h3>
+              <p className="text-xs sm:text-sm text-indigo-800/90 mt-0.5">
+                {hasIntegrations
+                  ? "Next step: Map your Master Products to your connected sales channels so price, quantity, and other changes can be synchronized."
+                  : "Connect a sales channel to start syncing your products."}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2 w-full md:w-auto shrink-0">
+            {hasIntegrations ? (
+              <Button
+                onClick={() => router.push("/product-mappings")}
+                className="w-full md:w-auto bg-indigo-600 hover:bg-indigo-700 text-white font-semibold shadow-sm"
+              >
+                Go to Product Mappings
+                <ArrowRight className="ml-2 h-4 w-4" />
+              </Button>
+            ) : (
+              <>
+                <Button
+                  size="sm"
+                  onClick={() => router.push("/integrations?connect=SHOPIFY")}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-medium text-xs"
+                >
+                  <Plug className="mr-1.5 h-3.5 w-3.5" />
+                  Connect Shopify
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => router.push("/integrations?connect=EBAY")}
+                  className="text-slate-800 border-slate-300 hover:bg-white text-xs"
+                >
+                  <Plug className="mr-1.5 h-3.5 w-3.5" />
+                  Connect eBay
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => router.push("/integrations?connect=CUSTOM_WEBSITE")}
+                  className="text-slate-800 border-slate-300 hover:bg-white text-xs"
+                >
+                  <Plug className="mr-1.5 h-3.5 w-3.5" />
+                  Connect Custom Website
+                </Button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Controls Bar */}
       <div className="flex items-center gap-4">

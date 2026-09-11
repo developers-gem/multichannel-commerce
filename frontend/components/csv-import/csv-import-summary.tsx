@@ -45,7 +45,7 @@ export default function CsvImportSummaryView({ summary }: CsvImportSummaryProps)
 
   return (
     <div className="space-y-3">
-      <h3 className="text-md font-bold text-slate-800">Import Summary</h3>
+      <h3 className="text-md font-bold text-slate-800">Import Metrics</h3>
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         {cards.map((card) => {
@@ -62,7 +62,9 @@ export default function CsvImportSummaryView({ summary }: CsvImportSummaryProps)
                 <p className="text-xs font-semibold uppercase tracking-wider opacity-75">
                   {card.title}
                 </p>
-                <p className="text-2xl font-black">{card.value}</p>
+                <p className="text-2xl font-black">
+                  {typeof card.value === "number" ? card.value.toLocaleString() : card.value}
+                </p>
               </div>
             </div>
           );

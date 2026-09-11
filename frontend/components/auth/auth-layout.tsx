@@ -14,6 +14,7 @@ export default function AuthLayout({ children }: Props) {
         <section className="flex items-center justify-center p-8 lg:p-14">
           <div className="w-full max-w-md">{children}</div>
         </section>
+       
       </div>
     </main>
   );

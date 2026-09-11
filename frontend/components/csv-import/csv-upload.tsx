@@ -37,6 +37,7 @@ export default function CsvUpload({
   };
 
   const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
+    if (isLoading) return;
     const files = e.target.files;
     if (files && files.length > 0) {
       const file = files[0];
@@ -51,6 +52,7 @@ export default function CsvUpload({
   const handleDrop = (e: DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     setIsDragOver(false);
+    if (isLoading) return;
 
     const files = e.dataTransfer.files;
     if (files && files.length > 0) {
@@ -63,7 +65,9 @@ export default function CsvUpload({
 
   const handleDragOver = (e: DragEvent<HTMLDivElement>) => {
     e.preventDefault();
-    setIsDragOver(true);
+    if (!isLoading) {
+      setIsDragOver(true);
+    }
   };
 
   const handleDragLeave = (e: DragEvent<HTMLDivElement>) => {
@@ -72,6 +76,7 @@ export default function CsvUpload({
   };
 
   const handleRemoveFile = () => {
+    if (isLoading) return;
     setSelectedFile(null);
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
@@ -79,6 +84,7 @@ export default function CsvUpload({
   };
 
   const handleSubmit = () => {
+    if (isLoading) return;
     if (!selectedFile) {
       toast.error("Please select a CSV file to upload.");
       return;
@@ -102,6 +108,7 @@ export default function CsvUpload({
           type="button"
           variant="outline"
           onClick={onDownloadSample}
+          disabled={isLoading}
           className="text-xs text-indigo-600 border-indigo-200 hover:bg-indigo-50"
         >
           <Download className="mr-1.5 h-3.5 w-3.5" />
@@ -114,13 +121,15 @@ export default function CsvUpload({
         onDrop={handleDrop}
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
-        onClick={() => !selectedFile && fileInputRef.current?.click()}
-        className={`relative flex flex-col items-center justify-center rounded-2xl border-2 border-dashed p-8 text-center transition-all cursor-pointer ${
-          isDragOver
-            ? "border-indigo-500 bg-indigo-50/50"
+        onClick={() => !isLoading && !selectedFile && fileInputRef.current?.click()}
+        className={`relative flex flex-col items-center justify-center rounded-2xl border-2 border-dashed p-8 text-center transition-all ${
+          isLoading
+            ? "border-slate-200 bg-slate-50 cursor-not-allowed opacity-75"
+            : isDragOver
+            ? "border-indigo-500 bg-indigo-50/50 cursor-pointer"
             : selectedFile
             ? "border-emerald-300 bg-emerald-50/20 cursor-default"
-            : "border-slate-300 bg-white hover:border-indigo-400 hover:bg-slate-50"
+            : "border-slate-300 bg-white hover:border-indigo-400 hover:bg-slate-50 cursor-pointer"
         }`}
       >
         <input
@@ -184,12 +193,12 @@ export default function CsvUpload({
           <Button
             onClick={handleSubmit}
             disabled={isLoading}
-            className="w-full sm:w-auto min-w-[140px]"
+            className="w-full sm:w-auto min-w-[160px]"
           >
             {isLoading ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Importing...
+                Processing CSV Import...
               </>
             ) : (
               <>
