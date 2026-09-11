@@ -8,7 +8,21 @@ import { csvRowSchema } from "./csv-import.validation";
 import { CsvImportSummary, CsvRowError } from "./csv-import.types";
 import { CSV_IMPORT_MESSAGES } from "./csv-import.messages";
 
-const REQUIRED_HEADERS = ["sku", "title", "price", "quantity"];
+const REQUIRED_HEADERS = ["sku"];
+
+const getRecordValue = (record: Record<string, string>, ...keys: string[]): string | undefined => {
+  const normalizedKeys = keys.map((k) => k.toLowerCase().replace(/[\s_]/g, ""));
+  for (const key of Object.keys(record)) {
+    const normKey = key.toLowerCase().replace(/[\s_]/g, "");
+    if (normalizedKeys.includes(normKey)) {
+      const val = record[key];
+      if (val !== undefined && val !== null) {
+        return String(val).trim();
+      }
+    }
+  }
+  return undefined;
+};
 
 class CsvImportService {
   async importProducts(fileBuffer: Buffer): Promise<CsvImportSummary> {
@@ -36,8 +50,10 @@ class CsvImportService {
       );
     }
 
-    // Header Validation: Ensure all required header keys are present in the CSV
-    const firstRecordKeys = Object.keys(records[0] || {}).map((k) => k.toLowerCase().trim());
+    // Header Validation: Ensure 'sku' header is present in the CSV
+    const firstRecordKeys = Object.keys(records[0] || {}).map((k) =>
+      k.toLowerCase().trim().replace(/[\s_]/g, "")
+    );
     const missingHeaders = REQUIRED_HEADERS.filter(
       (header) => !firstRecordKeys.includes(header)
     );
@@ -61,7 +77,7 @@ class CsvImportService {
       const record = records[index];
 
       // Extract & trim SKU
-      const rawSku = (record.sku || record.SKU || "").trim();
+      const rawSku = getRecordValue(record, "sku");
 
       if (!rawSku) {
         errors.push({
@@ -88,60 +104,144 @@ class CsvImportService {
 
       seenSkusInCsv.add(skuUpper);
 
-      // Parse & construct row object
-      const title = (record.title || record.Title || "").trim();
-      const description = (record.description || record.Description || "").trim();
-      const brand = (record.brand || record.Brand || "").trim();
-      const category = (record.category || record.Category || "").trim();
+      // Extract Title (Optional for CSV imports / updates)
+      const rawTitle = getRecordValue(record, "title");
+      const title = rawTitle !== undefined && rawTitle !== "" ? rawTitle : undefined;
 
-      const priceRaw = record.price ?? record.Price;
-      const priceNum = priceRaw !== undefined && priceRaw !== "" ? Number(priceRaw) : NaN;
+      // Extract Description, Brand, Category
+      const rawDescription = getRecordValue(record, "description");
+      const description = rawDescription !== undefined && rawDescription !== "" ? rawDescription : undefined;
 
-      const qtyRaw = record.quantity ?? record.Quantity;
-      const qtyNum = qtyRaw !== undefined && qtyRaw !== "" ? Number(qtyRaw) : NaN;
+      const rawBrand = getRecordValue(record, "brand");
+      const brand = rawBrand !== undefined && rawBrand !== "" ? rawBrand : undefined;
 
-      const shipRaw = record.shippingCharge ?? record.ShippingCharge;
-      const shipNum = shipRaw !== undefined && shipRaw !== "" ? Number(shipRaw) : 0;
+      const rawCategory = getRecordValue(record, "category");
+      const category = rawCategory !== undefined && rawCategory !== "" ? rawCategory : undefined;
 
-      const rawStatus = (record.status || record.Status || "").trim().toUpperCase();
-      let statusEnum: ProductStatus = ProductStatus.ACTIVE;
+      // Extract Price / Cost (supports price, cost, costprice column headers)
+      const rawPrice = getRecordValue(record, "price", "cost", "costprice");
+      let price: number | undefined = undefined;
 
-      if (rawStatus) {
-        if (Object.values(ProductStatus).includes(rawStatus as ProductStatus)) {
-          statusEnum = rawStatus as ProductStatus;
+      if (rawPrice !== undefined && rawPrice !== "") {
+        const parsedPrice = Number(rawPrice);
+        if (isNaN(parsedPrice)) {
+          errors.push({
+            row: rowNumber,
+            sku: skuUpper,
+            message: "Cost/Price must be a valid number",
+          });
+          failed++;
+          continue;
+        }
+        if (parsedPrice < 0) {
+          errors.push({
+            row: rowNumber,
+            sku: skuUpper,
+            message: "Price cannot be negative",
+          });
+          failed++;
+          continue;
+        }
+        price = parsedPrice;
+      }
+
+      // Extract Quantity (supports quantity, qty column headers)
+      const rawQty = getRecordValue(record, "quantity", "qty");
+      let quantity: number | undefined = undefined;
+
+      if (rawQty !== undefined && rawQty !== "") {
+        const parsedQty = Number(rawQty);
+        if (isNaN(parsedQty)) {
+          errors.push({
+            row: rowNumber,
+            sku: skuUpper,
+            message: "Quantity must be a valid number",
+          });
+          failed++;
+          continue;
+        }
+        if (parsedQty < 0) {
+          errors.push({
+            row: rowNumber,
+            sku: skuUpper,
+            message: "Quantity cannot be negative",
+          });
+          failed++;
+          continue;
+        }
+        if (!Number.isInteger(parsedQty)) {
+          errors.push({
+            row: rowNumber,
+            sku: skuUpper,
+            message: "Quantity must be an integer",
+          });
+          failed++;
+          continue;
+        }
+        quantity = parsedQty;
+      }
+
+      // Extract Shipping Charge
+      const rawShip = getRecordValue(record, "shippingcharge", "shipping");
+      let shippingCharge: number | undefined = undefined;
+
+      if (rawShip !== undefined && rawShip !== "") {
+        const parsedShip = Number(rawShip);
+        if (isNaN(parsedShip) || parsedShip < 0) {
+          errors.push({
+            row: rowNumber,
+            sku: skuUpper,
+            message: "Shipping charge must be a valid non-negative number",
+          });
+          failed++;
+          continue;
+        }
+        shippingCharge = parsedShip;
+      }
+
+      // Extract Status
+      const rawStatus = getRecordValue(record, "status");
+      let status: ProductStatus | undefined = undefined;
+
+      if (rawStatus !== undefined && rawStatus !== "") {
+        const statusUpper = rawStatus.toUpperCase();
+        if (Object.values(ProductStatus).includes(statusUpper as ProductStatus)) {
+          status = statusUpper as ProductStatus;
         } else {
           errors.push({
             row: rowNumber,
             sku: skuUpper,
-            message: `Invalid status '${record.status}'. Allowed values: ACTIVE, INACTIVE, DRAFT`,
+            message: `Invalid status '${rawStatus}'. Allowed values: ACTIVE, INACTIVE, DRAFT`,
           });
           failed++;
           continue;
         }
       }
 
-      const imagesRaw = record.images || record.Images || "";
-      const imagesArr = imagesRaw
-        ? imagesRaw
-            .split(",")
-            .map((url) => url.trim())
-            .filter(Boolean)
-        : [];
+      // Extract Images
+      const rawImages = getRecordValue(record, "images", "image");
+      let images: string[] | undefined = undefined;
+      if (rawImages !== undefined && rawImages !== "") {
+        images = rawImages
+          .split(",")
+          .map((url) => url.trim())
+          .filter(Boolean);
+      }
 
+      // Payload for Zod Validation
       const rowPayload = {
         sku: skuUpper,
         title,
         description,
         brand,
         category,
-        images: imagesArr,
-        price: priceNum,
-        quantity: qtyNum,
-        shippingCharge: shipNum,
-        status: statusEnum,
+        images,
+        price,
+        quantity,
+        shippingCharge,
+        status,
       };
 
-      // Zod Validation for row numbers & string rules
       const validation = csvRowSchema.safeParse(rowPayload);
 
       if (!validation.success) {
@@ -158,7 +258,7 @@ class CsvImportService {
         continue;
       }
 
-      // Upsert master Product using existing Product logic
+      // Upsert product by SKU
       try {
         const existingProduct = await Product.findOne({
           sku: skuUpper,
@@ -166,20 +266,47 @@ class CsvImportService {
         });
 
         if (existingProduct) {
-          await productService.update(existingProduct._id.toString(), {
-            title: rowPayload.title,
-            description: rowPayload.description,
-            brand: rowPayload.brand,
-            category: rowPayload.category,
-            images: rowPayload.images,
-            price: rowPayload.price,
-            quantity: rowPayload.quantity,
-            shippingCharge: rowPayload.shippingCharge,
-            status: rowPayload.status,
-          });
+          // Construct update payload with ONLY the fields supplied in CSV
+          const updatePayload: Record<string, any> = {};
+
+          if (title !== undefined) updatePayload.title = title;
+          if (description !== undefined) updatePayload.description = description;
+          if (brand !== undefined) updatePayload.brand = brand;
+          if (category !== undefined) updatePayload.category = category;
+          if (images !== undefined) updatePayload.images = images;
+          if (price !== undefined) updatePayload.price = price;
+          if (quantity !== undefined) updatePayload.quantity = quantity;
+          if (shippingCharge !== undefined) updatePayload.shippingCharge = shippingCharge;
+          if (status !== undefined) updatePayload.status = status;
+
+          await productService.update(existingProduct._id.toString(), updatePayload);
           updated++;
         } else {
-          await productService.create(rowPayload);
+          // Creating a brand-new product requires Title
+          if (!title) {
+            errors.push({
+              row: rowNumber,
+              sku: skuUpper,
+              message: "Title is required to create a new product",
+            });
+            failed++;
+            continue;
+          }
+
+          const createPayload = {
+            sku: skuUpper,
+            title,
+            description: description ?? "",
+            brand: brand ?? "",
+            category: category ?? "",
+            images: images ?? [],
+            price: price ?? 0,
+            quantity: quantity ?? 0,
+            shippingCharge: shippingCharge ?? 0,
+            status: status ?? ProductStatus.ACTIVE,
+          };
+
+          await productService.create(createPayload);
           created++;
         }
       } catch (err: any) {

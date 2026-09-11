@@ -32,22 +32,25 @@ export const uploadCsv = multer({
 });
 
 // Zod Schema for single CSV row validation
+// Title is optional for CSV imports to allow supplier cost/price/quantity updates
 export const csvRowSchema = z.object({
   sku: z.string().trim().min(1, "SKU is required"),
-  title: z.string().trim().min(1, "Title is required"),
+  title: z.string().trim().optional(),
   description: z.string().optional(),
   brand: z.string().optional(),
   category: z.string().optional(),
   images: z.array(z.string()).optional(),
   price: z
     .number()
-    .min(0, "Price cannot be negative"),
+    .min(0, "Price cannot be negative")
+    .optional(),
   quantity: z
     .number()
     .min(0, "Quantity cannot be negative")
     .refine((val) => Number.isInteger(val), {
       message: "Quantity must be an integer",
-    }),
+    })
+    .optional(),
   shippingCharge: z
     .number()
     .min(0, "Shipping charge cannot be negative")
