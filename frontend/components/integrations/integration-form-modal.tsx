@@ -13,7 +13,10 @@ import { Label } from "@/components/ui/label";
 import { Integration, PlatformType } from "@/types/integration";
 import { useCreateIntegration, useUpdateIntegration } from "@/hooks/use-integrations";
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api";
+const getApiBaseUrl = () => {
+  const rawUrl = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000").replace(/\/+$/, "");
+  return rawUrl.endsWith("/api") ? rawUrl : `${rawUrl}/api`;
+};
 
 const integrationSchema = z.object({
   platform: z.enum(["SHOPIFY", "EBAY", "CUSTOM_WEBSITE"] as const),
@@ -121,14 +124,19 @@ export default function IntegrationFormModal({
   const isSubmitting = createMutation.isPending || updateMutation.isPending;
 
   const handleShopifyOAuthConnect = () => {
-    let rawUrl = (storeUrlValue || "").trim();
+    let rawUrl = (storeUrlValue || "").trim().toLowerCase();
     if (!rawUrl) {
       toast.error("Please enter your Shopify store domain (e.g. my-store.myshopify.com)");
       return;
     }
 
     rawUrl = rawUrl.replace(/^https?:\/\//, "").replace(/\/+$/, "");
-    const authUrl = `${API_BASE_URL}/integrations/shopify/authorize?shop=${encodeURIComponent(rawUrl)}`;
+    if (!rawUrl.includes(".")) {
+      rawUrl = `${rawUrl}.myshopify.com`;
+    }
+
+    const apiBaseUrl = getApiBaseUrl();
+    const authUrl = `${apiBaseUrl}/integrations/shopify/authorize?shop=${encodeURIComponent(rawUrl)}`;
     window.location.href = authUrl;
   };
 

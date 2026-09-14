@@ -11,11 +11,11 @@ import {
 } from "lucide-react";
 
 export const sidebarItems = [
-  {
-    title: "Dashboard",
-    href: "/dashboard",
-    icon: LayoutDashboard,
-  },
+  // {
+  //   title: "Dashboard",
+  //   href: "/dashboard",
+  //   icon: LayoutDashboard,
+  // },
   {
     title: "Sync Operations",
     href: "/sync-dashboard",
@@ -46,6 +46,7 @@ export const sidebarItems = [
     href: "/sync-queue",
     icon: RefreshCw,
   },
+  
   // {
   //   title: "Settings",
   //   href: "/settings",
