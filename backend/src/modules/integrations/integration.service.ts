@@ -7,27 +7,43 @@ import { HTTP_STATUS } from "../../shared/constants/http-status.constants";
 import { MarketplaceConnectorFactory } from "../sync/connectors/connector.factory";
 import { Platform } from "../../shared/enums/platform.enum";
 import { env } from "../../config/env";
+import { redisConnection } from "../../config/redis";
+import { normalizeShopifyDomain } from "../../utils/shopify.utils";
 
 import { CreateIntegrationDto } from "./integration.types";
 
 class IntegrationService {
   /**
-   * Create Integration
+   * Create Integration (Manual setup for Non-Shopify platforms)
    */
-  async create(data: CreateIntegrationDto) {
+  async create(userId: string, data: CreateIntegrationDto) {
+    if (data.platform === Platform.SHOPIFY) {
+      throw new ApiError(
+        HTTP_STATUS.BAD_REQUEST,
+        "Shopify integrations must be connected using the Shopify OAuth flow."
+      );
+    }
+
+    const cleanStoreUrl = (data.storeUrl || "").trim();
+
     const existing = await Integration.findOne({
+      userId,
       platform: data.platform,
-      storeUrl: data.storeUrl,
+      storeUrl: cleanStoreUrl,
     });
 
     if (existing) {
       throw new ApiError(
         HTTP_STATUS.BAD_REQUEST,
-        "Integration already exists"
+        "Integration already exists for this channel"
       );
     }
 
-    const integration = await Integration.create(data);
+    const integration = await Integration.create({
+      ...data,
+      userId,
+      storeUrl: cleanStoreUrl,
+    });
 
     return {
       id: integration._id,
@@ -40,19 +56,19 @@ class IntegrationService {
   }
 
   /**
-   * Get All Integrations
+   * Get All Integrations for Current User
    */
-  async getAll() {
-    return Integration.find()
+  async getAll(userId: string) {
+    return Integration.find({ userId })
       .select("-credentials -__v")
       .sort({ createdAt: -1 });
   }
 
   /**
-   * Get Integration By Id
+   * Get Integration By Id for Current User
    */
-  async getById(id: string) {
-    const integration = await Integration.findById(id).select(
+  async getById(id: string, userId: string) {
+    const integration = await Integration.findOne({ _id: id, userId }).select(
       "-credentials -__v"
     );
 
@@ -67,14 +83,15 @@ class IntegrationService {
   }
 
   /**
-   * Update Integration
+   * Update Integration for Current User
    */
   async update(
     id: string,
+    userId: string,
     data: Partial<CreateIntegrationDto>
   ) {
-    const integration = await Integration.findByIdAndUpdate(
-      id,
+    const integration = await Integration.findOneAndUpdate(
+      { _id: id, userId },
       data,
       {
         new: true,
@@ -93,10 +110,10 @@ class IntegrationService {
   }
 
   /**
-   * Delete Integration
+   * Delete Integration for Current User
    */
-  async delete(id: string) {
-    const integration = await Integration.findByIdAndDelete(id);
+  async delete(id: string, userId: string) {
+    const integration = await Integration.findOneAndDelete({ _id: id, userId });
 
     if (!integration) {
       throw new ApiError(
@@ -109,10 +126,10 @@ class IntegrationService {
   }
 
   /**
-   * Test Integration Connection Health
+   * Test Integration Connection Health for Current User
    */
-  async testConnection(id: string) {
-    const integration = await Integration.findById(id);
+  async testConnection(id: string, userId: string) {
+    const integration = await Integration.findOne({ _id: id, userId });
 
     if (!integration) {
       throw new ApiError(
@@ -138,16 +155,63 @@ class IntegrationService {
 
     const result = await connector.testConnection(
       integration.credentials,
-      integration.storeUrl
+      integration.storeUrl,
+      String(integration._id)
     );
 
     return result;
   }
 
+  private static inMemoryStateStore = new Map<string, string>();
+
+  private async saveOAuthState(state: string, data: { userId: string; shop: string }): Promise<void> {
+    const key = `shopify_oauth_state:${state}`;
+    const value = JSON.stringify(data);
+
+    try {
+      if (redisConnection.status === "ready") {
+        await redisConnection.set(key, value, "EX", 600);
+        return;
+      }
+    } catch (_) {}
+
+    IntegrationService.inMemoryStateStore.set(key, value);
+    setTimeout(() => {
+      IntegrationService.inMemoryStateStore.delete(key);
+    }, 600000);
+  }
+
+  private async getAndDeleteOAuthState(state: string): Promise<{ userId: string; shop: string } | null> {
+    const key = `shopify_oauth_state:${state}`;
+    let val: string | null = null;
+
+    try {
+      if (redisConnection.status === "ready") {
+        val = await redisConnection.get(key);
+        if (val) {
+          await redisConnection.del(key);
+        }
+      }
+    } catch (_) {}
+
+    if (!val && IntegrationService.inMemoryStateStore.has(key)) {
+      val = IntegrationService.inMemoryStateStore.get(key) || null;
+      IntegrationService.inMemoryStateStore.delete(key);
+    }
+
+    if (!val) return null;
+
+    try {
+      return JSON.parse(val);
+    } catch (_) {
+      return null;
+    }
+  }
+
   /**
-   * Minimal Shopify OAuth: Generate Authorization URL
+   * Shopify OAuth: Generate Authorization URL & Bind State to SaaS User
    */
-  getShopifyAuthorizeUrl(shopInput: string): string {
+  async getShopifyAuthorizeUrl(shopInput: string, userId: string): Promise<string> {
     if (!env.SHOPIFY_CLIENT_ID) {
       throw new ApiError(
         HTTP_STATUS.BAD_REQUEST,
@@ -155,32 +219,30 @@ class IntegrationService {
       );
     }
 
-    let cleanShop = (shopInput || "").trim().toLowerCase().replace(/^https?:\/\//, "").replace(/\/+$/, "");
+    const cleanShop = normalizeShopifyDomain(shopInput);
     if (!cleanShop) {
       throw new ApiError(HTTP_STATUS.BAD_REQUEST, "Shopify store URL is required");
-    }
-
-    if (!cleanShop.includes(".")) {
-      cleanShop = `${cleanShop}.myshopify.com`;
     }
 
     const scopes = "read_products,write_products,read_inventory,write_inventory";
     const state = crypto.randomBytes(16).toString("hex");
 
+    await this.saveOAuthState(state, { userId, shop: cleanShop });
+
     return `https://${cleanShop}/admin/oauth/authorize?client_id=${env.SHOPIFY_CLIENT_ID}&scope=${scopes}&redirect_uri=${encodeURIComponent(env.SHOPIFY_REDIRECT_URI)}&state=${state}`;
   }
 
   /**
-   * Minimal Shopify OAuth: Handle Callback & Access Token Exchange
+   * Shopify OAuth: Handle Callback, Verify HMAC & State, Exchange Access Token, Upsert User Integration
    */
   async handleShopifyCallback(query: Record<string, any>): Promise<string> {
-    const { shop, code, hmac } = query;
+    const { shop, code, hmac, state } = query;
 
-    if (!shop || !code) {
-      throw new ApiError(HTTP_STATUS.BAD_REQUEST, "Missing shop or code in Shopify OAuth callback");
+    if (!shop || !code || !state) {
+      throw new ApiError(HTTP_STATUS.BAD_REQUEST, "Missing shop, code, or state in Shopify OAuth callback");
     }
 
-    let cleanShop = String(shop).trim().toLowerCase().replace(/^https?:\/\//, "").replace(/\/+$/, "");
+    const cleanShop = normalizeShopifyDomain(String(shop));
 
     // Verify HMAC if client secret configured
     if (env.SHOPIFY_CLIENT_SECRET && hmac) {
@@ -203,8 +265,22 @@ class IntegrationService {
       }
     }
 
-    // Exchange authorization code for offline access token
-    let accessToken = "";
+    // Verify State in Redis or in-memory fallback
+    const stateData = await this.getAndDeleteOAuthState(state);
+
+    if (!stateData) {
+      throw new ApiError(
+        HTTP_STATUS.BAD_REQUEST,
+        "Invalid or expired OAuth state session. Please initiate Shopify connection again."
+      );
+    }
+
+    if (stateData.shop !== cleanShop) {
+      throw new ApiError(HTTP_STATUS.BAD_REQUEST, "Shop domain mismatch with OAuth state session");
+    }
+
+    // Exchange authorization code for access token (and refresh token if present)
+    let tokenData: any;
     try {
       const tokenRes = await axios.post(
         `https://${cleanShop}/admin/oauth/access_token`,
@@ -216,7 +292,7 @@ class IntegrationService {
         { timeout: 15000 }
       );
 
-      accessToken = tokenRes.data?.access_token || "";
+      tokenData = tokenRes.data;
     } catch (err: any) {
       throw new ApiError(
         HTTP_STATUS.BAD_REQUEST,
@@ -224,34 +300,54 @@ class IntegrationService {
       );
     }
 
+    const accessToken = tokenData?.access_token || "";
     if (!accessToken) {
       throw new ApiError(HTTP_STATUS.BAD_REQUEST, "Shopify token exchange succeeded but returned empty token");
     }
 
-    // Create or update Integration record in MongoDB
+    const credentialsObj: Record<string, any> = {
+      accessToken,
+    };
+    if (tokenData.refresh_token) {
+      credentialsObj.refreshToken = tokenData.refresh_token;
+    }
+    if (tokenData.expires_in) {
+      credentialsObj.expiresAt = new Date(Date.now() + tokenData.expires_in * 1000);
+    }
+    if (tokenData.scope) {
+      credentialsObj.scope = tokenData.scope;
+    }
+
+    // User-scoped lookup in MongoDB
     let integration = await Integration.findOne({
+      userId: stateData.userId,
       platform: Platform.SHOPIFY,
       storeUrl: cleanShop,
     });
 
-    const storeName = cleanShop.split(".")[0];
+    const storeSlug = cleanShop.split(".")[0];
+    const formattedStoreName = storeSlug.charAt(0).toUpperCase() + storeSlug.slice(1);
 
     if (integration) {
-      integration.credentials = { accessToken };
+      integration.credentials = credentialsObj;
       integration.isActive = true;
+      if (!integration.storeName) {
+        integration.storeName = formattedStoreName;
+      }
       await integration.save();
     } else {
       integration = await Integration.create({
+        userId: stateData.userId,
         platform: Platform.SHOPIFY,
-        storeName: storeName.charAt(0).toUpperCase() + storeName.slice(1),
+        storeName: formattedStoreName,
         storeUrl: cleanShop,
-        credentials: { accessToken },
+        credentials: credentialsObj,
         isActive: true,
       });
     }
 
-    // Run connection test
-    await this.testConnection(String(integration._id));
+    // Run connection health test
+    await this.testConnection(String(integration._id), stateData.userId);
 
     return `${env.FRONTEND_URL}/integrations?shopify_success=true&store=${encodeURIComponent(cleanShop)}`;
   }

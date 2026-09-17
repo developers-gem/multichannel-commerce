@@ -17,7 +17,7 @@ import { createIntegrationSchema } from "./integration.validation";
 const router = Router();
 
 // Shopify OAuth Routes
-router.get("/shopify/authorize", initiateShopifyAuth);
+router.get("/shopify/authorize", authenticate, initiateShopifyAuth);
 router.get("/shopify/callback", handleShopifyCallback);
 
 router.post(

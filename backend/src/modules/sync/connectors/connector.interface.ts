@@ -31,7 +31,7 @@ export interface IMarketplaceConnector {
   createProduct(payload: SyncPayload): Promise<SyncResult>;
   updateProduct(payload: SyncPayload): Promise<SyncResult>;
   deleteProduct(payload: SyncPayload): Promise<SyncResult>;
-  testConnection(credentials?: Record<string, unknown>, storeUrl?: string): Promise<HealthCheckResult>;
+  testConnection(credentials?: Record<string, unknown>, storeUrl?: string, integrationId?: string): Promise<HealthCheckResult>;
 }
 
 /**

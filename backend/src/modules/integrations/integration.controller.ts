@@ -7,7 +7,8 @@ import { HTTP_STATUS } from "../../shared/constants/http-status.constants";
 
 export const createIntegration = asyncHandler(
   async (req: Request, res: Response) => {
-    const integration = await integrationService.create(req.body);
+    const userId = String(req.user?._id);
+    const integration = await integrationService.create(userId, req.body);
 
     return res.status(HTTP_STATUS.CREATED).json(
       new ApiResponse(
@@ -21,7 +22,8 @@ export const createIntegration = asyncHandler(
 
 export const getAllIntegrations = asyncHandler(
   async (req: Request, res: Response) => {
-    const integrations = await integrationService.getAll();
+    const userId = String(req.user?._id);
+    const integrations = await integrationService.getAll(userId);
 
     return res.status(HTTP_STATUS.OK).json(
       new ApiResponse(
@@ -35,8 +37,9 @@ export const getAllIntegrations = asyncHandler(
 
 export const getIntegrationById = asyncHandler(
   async (req: Request, res: Response) => {
+    const userId = String(req.user?._id);
     const id = String(req.params.id);
-    const integration = await integrationService.getById(id);
+    const integration = await integrationService.getById(id, userId);
 
     return res.status(HTTP_STATUS.OK).json(
       new ApiResponse(
@@ -50,9 +53,11 @@ export const getIntegrationById = asyncHandler(
 
 export const updateIntegration = asyncHandler(
   async (req: Request, res: Response) => {
+    const userId = String(req.user?._id);
     const id = String(req.params.id);
     const integration = await integrationService.update(
       id,
+      userId,
       req.body
     );
 
@@ -68,8 +73,9 @@ export const updateIntegration = asyncHandler(
 
 export const deleteIntegration = asyncHandler(
   async (req: Request, res: Response) => {
+    const userId = String(req.user?._id);
     const id = String(req.params.id);
-    await integrationService.delete(id);
+    await integrationService.delete(id, userId);
 
     return res.status(HTTP_STATUS.OK).json(
       new ApiResponse(
@@ -82,8 +88,9 @@ export const deleteIntegration = asyncHandler(
 
 export const testIntegrationConnection = asyncHandler(
   async (req: Request, res: Response) => {
+    const userId = String(req.user?._id);
     const id = String(req.params.id);
-    const result = await integrationService.testConnection(id);
+    const result = await integrationService.testConnection(id, userId);
 
     return res.status(HTTP_STATUS.OK).json(
       new ApiResponse(
@@ -97,9 +104,13 @@ export const testIntegrationConnection = asyncHandler(
 
 export const initiateShopifyAuth = asyncHandler(
   async (req: Request, res: Response) => {
+    const userId = String(req.user?._id || "");
     const shop = String(req.query.shop || "");
-    const authUrl = integrationService.getShopifyAuthorizeUrl(shop);
-    return res.redirect(authUrl);
+    const authUrl = await integrationService.getShopifyAuthorizeUrl(shop, userId);
+
+    return res.status(HTTP_STATUS.OK).json(
+      new ApiResponse(true, "Shopify authorization URL generated", { authUrl })
+    );
   }
 );
 
