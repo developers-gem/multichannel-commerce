@@ -71,12 +71,12 @@ export default function MarketplaceShowcase() {
             management time by 60%."
           </p>
 
-          <div className="mt-5">
+          {/* <div className="mt-5">
             <h4 className="font-semibold">John Smith</h4>
             <p className="text-sm text-slate-400">
               CEO • Fashion Store
             </p>
-          </div>
+          </div> */}
         </div>
       </div>
     </div>
