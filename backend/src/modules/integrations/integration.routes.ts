@@ -9,6 +9,8 @@ import {
   testIntegrationConnection,
   initiateShopifyAuth,
   handleShopifyCallback,
+  initiateEbayAuth,
+  handleEbayCallback,
 } from "./integration.controller";
 
 import { validate } from "../../middlewares/validate.middleware";
@@ -19,6 +21,10 @@ const router = Router();
 // Shopify OAuth Routes
 router.get("/shopify/authorize", authenticate, initiateShopifyAuth);
 router.get("/shopify/callback", handleShopifyCallback);
+
+// eBay OAuth Routes
+router.get("/ebay/authorize", authenticate, initiateEbayAuth);
+router.get("/ebay/callback", handleEbayCallback);
 
 router.post(
   "/",

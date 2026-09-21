@@ -28,5 +28,12 @@ export const env = {
   SHOPIFY_CLIENT_ID: process.env.SHOPIFY_CLIENT_ID || "",
   SHOPIFY_CLIENT_SECRET: process.env.SHOPIFY_CLIENT_SECRET || "",
   SHOPIFY_REDIRECT_URI: process.env.SHOPIFY_REDIRECT_URI || "http://localhost:5000/api/integrations/shopify/callback",
+
+  // Minimal eBay OAuth config
+  EBAY_CLIENT_ID: process.env.EBAY_CLIENT_ID || "",
+  EBAY_CLIENT_SECRET: process.env.EBAY_CLIENT_SECRET || "",
+  EBAY_RU_NAME: process.env.EBAY_RU_NAME || "",
+  EBAY_ENVIRONMENT: (process.env.EBAY_ENVIRONMENT || "sandbox") as "sandbox" | "production",
+
   FRONTEND_URL: process.env.FRONTEND_URL || "http://localhost:3000",
 };

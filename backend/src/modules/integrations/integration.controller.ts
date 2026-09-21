@@ -1,4 +1,5 @@
 import { Request, Response } from "express";
+import "../../types/express.types";
 
 import { integrationService } from "./integration.service";
 import { asyncHandler } from "../../utils/asyncHandler";
@@ -117,6 +118,24 @@ export const initiateShopifyAuth = asyncHandler(
 export const handleShopifyCallback = asyncHandler(
   async (req: Request, res: Response) => {
     const redirectUrl = await integrationService.handleShopifyCallback(req.query);
+    return res.redirect(redirectUrl);
+  }
+);
+
+export const initiateEbayAuth = asyncHandler(
+  async (req: Request, res: Response) => {
+    const userId = String(req.user?._id || "");
+    const authUrl = await integrationService.getEbayAuthorizeUrl(userId);
+
+    return res.status(HTTP_STATUS.OK).json(
+      new ApiResponse(true, "eBay authorization URL generated", { authUrl })
+    );
+  }
+);
+
+export const handleEbayCallback = asyncHandler(
+  async (req: Request, res: Response) => {
+    const redirectUrl = await integrationService.handleEbayCallback(req.query);
     return res.redirect(redirectUrl);
   }
 );
