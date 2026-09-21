@@ -7,6 +7,7 @@ import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation } from "@tanstack/react-query";
 
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -186,16 +187,15 @@ const saveLogin = useAuthStore((state) => state.login);
         </Button>
       </form>
 
-      <div className="mt-8 rounded-xl bg-slate-50 p-4">
-        <p className="font-semibold">Demo Credentials</p>
-
-        <p className="mt-2 text-sm">
-          Email: admin@multichannel.com
-        </p>
-
-        <p className="text-sm">
-          Password: Admin@123
-        </p>
+      <div className="mt-6 text-center text-xs text-slate-500">
+        By continuing, you agree to our{" "}
+        <Link
+          href="/privacy-policy"
+          className="font-medium text-indigo-600 hover:text-indigo-800 underline transition-colors"
+        >
+          Privacy Policy
+        </Link>
+        .
       </div>
     </div>
   );

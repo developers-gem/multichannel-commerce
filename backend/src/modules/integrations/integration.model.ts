@@ -1,7 +1,8 @@
-import { Schema, model, Document } from "mongoose";
+import { Schema, model, Document, Types } from "mongoose";
 import { Platform } from "../../shared/enums/platform.enum";
 
 export interface IIntegration extends Document {
+  userId?: Types.ObjectId;
   platform: Platform;
   storeName: string;
   storeUrl: string;
@@ -15,6 +16,12 @@ export interface IIntegration extends Document {
 
 const integrationSchema = new Schema<IIntegration>(
   {
+    userId: {
+      type: Schema.Types.ObjectId,
+      ref: "User",
+      index: true,
+    },
+
     platform: {
       type: String,
       enum: Object.values(Platform),
@@ -48,6 +55,12 @@ const integrationSchema = new Schema<IIntegration>(
   {
     timestamps: true,
   }
+);
+
+// Compound unique index per user, platform, and storeUrl
+integrationSchema.index(
+  { userId: 1, platform: 1, storeUrl: 1 },
+  { unique: true, sparse: true }
 );
 
 const Integration = model<IIntegration>(

@@ -1,4 +1,5 @@
 import { Request, Response, NextFunction } from "express";
+import "../types/express.types";
 import User from "../modules/auth/user.model";
 import { ApiError } from "../utils/ApiError";
 import { HTTP_STATUS } from "../shared/constants/http-status.constants";

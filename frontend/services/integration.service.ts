@@ -143,3 +143,27 @@ export async function testIntegrationConnection(
 
   return data;
 }
+
+export async function initiateShopifyAuthorize(
+  shop: string
+): Promise<ApiResponse<{ authUrl: string }>> {
+  const response = await fetch(
+    `${API_URL}/api/integrations/shopify/authorize?shop=${encodeURIComponent(shop)}`,
+    {
+      headers: getAuthHeaders(),
+    }
+  );
+
+  if (response.status === 401) {
+    handleUnauthorized();
+    throw new Error("Unauthorized: Session expired");
+  }
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw new Error(data.message || "Failed to initiate Shopify authorization");
+  }
+
+  return data;
+}

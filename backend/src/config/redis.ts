@@ -18,11 +18,18 @@
 import Redis from 'ioredis';
 import { Queue } from 'bullmq';
 
-const redisUrl = process.env.REDIS_URL || `redis://${process.env.REDIS_HOST}:${process.env.REDIS_PORT}`;
+const rawHost = process.env.REDIS_HOST || 'localhost';
+const hostUrl = rawHost.startsWith('redis://') || rawHost.startsWith('rediss://')
+  ? rawHost
+  : `redis://${rawHost}:${process.env.REDIS_PORT || 6379}`;
+
+const redisUrl = process.env.REDIS_URL || hostUrl;
 
 // Shared ioredis client
 export const redisConnection = new Redis(redisUrl, {
   maxRetriesPerRequest: null, // Required for BullMQ
+  enableOfflineQueue: false,
+  retryStrategy: () => null, // Stop reconnecting continuously if offline in test/dev
 });
   
 redisConnection.on('connect', () => {
@@ -34,7 +41,7 @@ redisConnection.on('connect', () => {
 
 
 redisConnection.on('error', (err) => {
-  console.error('❌ Redis Connection Error:', err);
+  // Silent warning if Redis is offline during local test/dev
 });
 
 // Initialize BullMQ Queue for background syncs

@@ -1,5 +1,8 @@
 import axios from "axios";
 import { env } from "../../../config/env";
+import { redisConnection } from "../../../config/redis";
+import Integration from "../../integrations/integration.model";
+import { normalizeShopifyDomain } from "../../../utils/shopify.utils";
 import {
   HealthCheckResult,
   IChannelImportConnector,
@@ -19,11 +22,203 @@ export class ShopifyConnector implements IMarketplaceConnector, IChannelImportCo
       throw new Error("Shopify store URL is missing");
     }
 
-    let cleanUrl = storeUrl.trim().toLowerCase();
-    cleanUrl = cleanUrl.replace(/^https?:\/\//, "").replace(/\/+$/, "");
-
+    const cleanUrl = normalizeShopifyDomain(storeUrl);
     const apiVersion = env.SHOPIFY_API_VERSION || "2026-01";
     return `https://${cleanUrl}/admin/api/${apiVersion}/graphql.json`;
+  }
+
+  private static inMemoryLocks = new Map<string, string>();
+
+  private async acquireLock(lockKey: string, lockValue: string, ttlMs: number): Promise<boolean> {
+    try {
+      if (redisConnection.status === "ready") {
+        const res = await redisConnection.set(lockKey, lockValue, "PX", ttlMs, "NX");
+        if (res === "OK") return true;
+        if (res === null) return false;
+      }
+    } catch (_) {}
+
+    // In-memory fallback if Redis connection is not ready/available
+    if (ShopifyConnector.inMemoryLocks.has(lockKey)) {
+      return false;
+    }
+    ShopifyConnector.inMemoryLocks.set(lockKey, lockValue);
+    setTimeout(() => {
+      if (ShopifyConnector.inMemoryLocks.get(lockKey) === lockValue) {
+        ShopifyConnector.inMemoryLocks.delete(lockKey);
+      }
+    }, ttlMs);
+    return true;
+  }
+
+  private async releaseLock(lockKey: string, lockValue: string): Promise<void> {
+    try {
+      if (redisConnection.status === "ready") {
+        const currVal = await redisConnection.get(lockKey);
+        if (currVal === lockValue) {
+          await redisConnection.del(lockKey);
+        }
+      }
+    } catch (_) {}
+
+    if (ShopifyConnector.inMemoryLocks.get(lockKey) === lockValue) {
+      ShopifyConnector.inMemoryLocks.delete(lockKey);
+    }
+  }
+
+  /**
+   * Concurrency-Safe Token Refresh Handler per Integration using Redis distributed locks with in-memory fallback
+   */
+  public async ensureValidAccessToken(
+    storeUrl: string,
+    credentials?: Record<string, unknown>,
+    integrationId?: string,
+    forceRefresh = false
+  ): Promise<string> {
+    const rawToken =
+      (credentials?.accessToken as string) ||
+      (credentials?.token as string) ||
+      (credentials?.apiKey as string) ||
+      "";
+
+    const refreshToken = credentials?.refreshToken as string | undefined;
+    const rawExpiresAt = credentials?.expiresAt;
+    const expiresAt = rawExpiresAt ? new Date(rawExpiresAt as string | number | Date).getTime() : 0;
+
+    const cleanShop = normalizeShopifyDomain(storeUrl);
+    const isExpiredOrNear = expiresAt > 0 && expiresAt <= Date.now() + 5 * 60 * 1000;
+
+    if (!forceRefresh && !isExpiredOrNear) {
+      if (rawToken && rawToken.trim()) {
+        return rawToken.trim();
+      }
+      throw new Error("Shopify access token is missing in integration credentials");
+    }
+
+    if (!refreshToken) {
+      if (rawToken && rawToken.trim()) {
+        return rawToken.trim();
+      }
+      throw new Error("Shopify access token is expired and no refresh_token is available");
+    }
+
+    if (!integrationId) {
+      const res = await this.performShopifyTokenRefresh(cleanShop, refreshToken);
+      return res.accessToken;
+    }
+
+    const lockKey = `lock:token-refresh:${integrationId}`;
+    const lockValue = `${Date.now()}:${Math.random().toString(36).substring(2)}`;
+    const LOCK_TTL_MS = 15000;
+
+    const acquired = await this.acquireLock(lockKey, lockValue, LOCK_TTL_MS);
+
+    if (acquired) {
+      try {
+        const existingDoc = await Integration.findById(integrationId);
+        if (existingDoc && existingDoc.credentials) {
+          const dbExpiresAt = existingDoc.credentials.expiresAt
+            ? new Date(existingDoc.credentials.expiresAt).getTime()
+            : 0;
+          const dbToken = existingDoc.credentials.accessToken as string;
+
+          if (!forceRefresh && dbExpiresAt > Date.now() + 5 * 60 * 1000 && dbToken) {
+            return dbToken;
+          }
+        }
+
+        const refreshRes = await this.performShopifyTokenRefresh(cleanShop, refreshToken);
+
+        const updatePayload: Record<string, any> = {
+          "credentials.accessToken": refreshRes.accessToken,
+        };
+        if (refreshRes.expiresAt) updatePayload["credentials.expiresAt"] = refreshRes.expiresAt;
+        if (refreshRes.refreshToken) updatePayload["credentials.refreshToken"] = refreshRes.refreshToken;
+        if (refreshRes.scope) updatePayload["credentials.scope"] = refreshRes.scope;
+
+        await Integration.findOneAndUpdate(
+          { _id: integrationId },
+          { $set: updatePayload },
+          { new: true }
+        );
+
+        if (credentials) {
+          credentials.accessToken = refreshRes.accessToken;
+          if (refreshRes.expiresAt) credentials.expiresAt = refreshRes.expiresAt;
+          if (refreshRes.refreshToken) credentials.refreshToken = refreshRes.refreshToken;
+        }
+
+        return refreshRes.accessToken;
+      } finally {
+        await this.releaseLock(lockKey, lockValue);
+      }
+    } else {
+      const pollIntervalMs = 500;
+      const maxAttempts = 20;
+
+      for (let attempt = 0; attempt < maxAttempts; attempt++) {
+        await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
+
+        const freshDoc = await Integration.findById(integrationId);
+        if (freshDoc && freshDoc.credentials) {
+          const freshExpiresAt = freshDoc.credentials.expiresAt
+            ? new Date(freshDoc.credentials.expiresAt).getTime()
+            : 0;
+          const freshToken = freshDoc.credentials.accessToken as string;
+
+          if (freshExpiresAt > Date.now() + 5 * 60 * 1000 && freshToken) {
+            if (credentials) {
+              credentials.accessToken = freshToken;
+              credentials.expiresAt = freshDoc.credentials.expiresAt;
+              if (freshDoc.credentials.refreshToken) {
+                credentials.refreshToken = freshDoc.credentials.refreshToken;
+              }
+            }
+            return freshToken;
+          }
+        }
+      }
+
+      throw new Error(`Shopify token refresh in progress for store ${cleanShop}, please retry`);
+    }
+  }
+
+  private async performShopifyTokenRefresh(
+    cleanShop: string,
+    refreshToken: string
+  ): Promise<{ accessToken: string; refreshToken?: string; expiresAt?: Date; scope?: string }> {
+    try {
+      const res = await axios.post(
+        `https://${cleanShop}/admin/oauth/access_token`,
+        {
+          client_id: env.SHOPIFY_CLIENT_ID,
+          client_secret: env.SHOPIFY_CLIENT_SECRET,
+          grant_type: "refresh_token",
+          refresh_token: refreshToken,
+        },
+        { timeout: 15000 }
+      );
+
+      const accessToken = res.data?.access_token || "";
+      if (!accessToken) {
+        throw new Error("Shopify token refresh returned empty access_token");
+      }
+
+      const expiresIn = res.data?.expires_in;
+      const newRefreshToken = res.data?.refresh_token;
+      const scope = res.data?.scope;
+
+      return {
+        accessToken,
+        refreshToken: newRefreshToken || refreshToken,
+        expiresAt: expiresIn ? new Date(Date.now() + expiresIn * 1000) : undefined,
+        scope,
+      };
+    } catch (err: any) {
+      const errMsg = err.response?.data?.error_description || err.message || "Token refresh failed";
+      const sanitizedMsg = String(errMsg).replace(new RegExp(refreshToken, "g"), "***MASKED***");
+      throw new Error(`Shopify token refresh failed: ${sanitizedMsg}`);
+    }
   }
 
   /**
@@ -49,10 +244,11 @@ export class ShopifyConnector implements IMarketplaceConnector, IChannelImportCo
     storeUrl: string,
     credentials: Record<string, unknown> | undefined,
     query: string,
-    variables: Record<string, unknown> = {}
+    variables: Record<string, unknown> = {},
+    integrationId?: string
   ): Promise<any> {
     const endpoint = this.getEndpoint(storeUrl);
-    const token = this.getAccessToken(credentials);
+    let token = await this.ensureValidAccessToken(storeUrl, credentials, integrationId);
 
     try {
       const response = await axios.post(
@@ -81,6 +277,26 @@ export class ShopifyConnector implements IMarketplaceConnector, IChannelImportCo
 
       return response.data.data;
     } catch (error: any) {
+      if ((error.response?.status === 401 || error.response?.status === 403) && credentials?.refreshToken) {
+        try {
+          token = await this.ensureValidAccessToken(storeUrl, credentials, integrationId, true);
+          const retryRes = await axios.post(
+            endpoint,
+            { query, variables },
+            {
+              headers: {
+                "X-Shopify-Access-Token": token,
+                "Content-Type": "application/json",
+              },
+              timeout: 15000,
+            }
+          );
+          if (retryRes.data?.data) {
+            return retryRes.data.data;
+          }
+        } catch (_) {}
+      }
+
       if (error.response?.status === 429) {
         throw new Error("Shopify API rate limit exceeded (HTTP 429).");
       }
@@ -105,7 +321,8 @@ export class ShopifyConnector implements IMarketplaceConnector, IChannelImportCo
    */
   async testConnection(
     credentials?: Record<string, unknown>,
-    storeUrl?: string
+    storeUrl?: string,
+    integrationId?: string
   ): Promise<HealthCheckResult> {
     if (process.env.MOCK_SYNC_CONNECTORS === "true") {
       return {
@@ -123,7 +340,6 @@ export class ShopifyConnector implements IMarketplaceConnector, IChannelImportCo
     }
 
     try {
-      const token = this.getAccessToken(credentials);
       const query = `
         query {
           shop {
@@ -133,7 +349,7 @@ export class ShopifyConnector implements IMarketplaceConnector, IChannelImportCo
         }
       `;
 
-      const data = await this.executeGraphQL(url, credentials, query);
+      const data = await this.executeGraphQL(url, credentials, query, {}, integrationId);
       const shop = data?.shop;
 
       if (!shop?.myshopifyDomain) {
