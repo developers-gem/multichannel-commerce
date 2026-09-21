@@ -24,10 +24,14 @@ const redisUrl = process.env.REDIS_URL || `redis://${process.env.REDIS_HOST}:${p
 export const redisConnection = new Redis(redisUrl, {
   maxRetriesPerRequest: null, // Required for BullMQ
 });
-
+  
 redisConnection.on('connect', () => {
   console.log('✅ Connected to Redis/Valkey successfully');
 });
+
+
+
+
 
 redisConnection.on('error', (err) => {
   console.error('❌ Redis Connection Error:', err);

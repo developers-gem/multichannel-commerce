@@ -1,0 +1,23 @@
+# Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
+
+client_id = "1b42454d3da9f8c9973c97801fac8eff"
+name = "MultiChannel Commerce"
+application_url = "https://multichannel-commerce-ruddy.vercel.app"
+embedded = true
+
+[access_scopes]
+# Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
+scopes = "read_products,write_products,read_inventory,write_inventory"
+
+[auth]
+redirect_urls = [
+  "https://multichannel-commerce-ruddy.vercel.app/api/integrations/shopify/callback"
+]
+
+[webhooks]
+api_version = "2026-07"
+
+[app_proxy]
+url = "https://multichannel-commerce-ruddy.vercel.app"
+subpath = "multichannel"
+prefix = "apps"

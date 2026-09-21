@@ -8,7 +8,9 @@ export const validate =
       req.body = schema.parse(req.body);
 
       next();
-    } catch (error) {
+    }catch (error) {
       next(error);
     }
+
+    
   };

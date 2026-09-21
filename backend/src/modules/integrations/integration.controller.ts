@@ -19,9 +19,11 @@ export const createIntegration = asyncHandler(
   }
 );
 
+
 export const getAllIntegrations = asyncHandler(
   async (req: Request, res: Response) => {
     const integrations = await integrationService.getAll();
+
 
     return res.status(HTTP_STATUS.OK).json(
       new ApiResponse(
@@ -32,6 +34,9 @@ export const getAllIntegrations = asyncHandler(
     );
   }
 );
+
+
+
 
 export const getIntegrationById = asyncHandler(
   async (req: Request, res: Response) => {
@@ -47,6 +52,8 @@ export const getIntegrationById = asyncHandler(
     );
   }
 );
+
+
 
 export const updateIntegration = asyncHandler(
   async (req: Request, res: Response) => {
@@ -66,6 +73,8 @@ export const updateIntegration = asyncHandler(
   }
 );
 
+
+
 export const deleteIntegration = asyncHandler(
   async (req: Request, res: Response) => {
     const id = String(req.params.id);
@@ -79,6 +88,8 @@ export const deleteIntegration = asyncHandler(
     );
   }
 );
+
+
 
 export const testIntegrationConnection = asyncHandler(
   async (req: Request, res: Response) => {
@@ -95,6 +106,8 @@ export const testIntegrationConnection = asyncHandler(
   }
 );
 
+
+
 export const initiateShopifyAuth = asyncHandler(
   async (req: Request, res: Response) => {
     const shop = String(req.query.shop || "");
@@ -102,6 +115,9 @@ export const initiateShopifyAuth = asyncHandler(
     return res.redirect(authUrl);
   }
 );
+
+
+
 
 export const handleShopifyCallback = asyncHandler(
   async (req: Request, res: Response) => {
