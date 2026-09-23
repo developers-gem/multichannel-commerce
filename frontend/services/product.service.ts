@@ -6,8 +6,8 @@ import {
 } from "@/types/product";
 import { ApiResponse } from "@/types/common";
 import { getAuthHeaders, handleUnauthorized } from "@/lib/api-client";
+import { API_URL } from "@/lib/config";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL;
 
 export async function getProducts(
   page: number = 1,

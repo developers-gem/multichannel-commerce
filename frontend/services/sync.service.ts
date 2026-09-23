@@ -7,8 +7,8 @@ import {
   SyncLogsResponse,
 } from "@/types/sync";
 import { getAuthHeaders, handleUnauthorized } from "@/lib/api-client";
+import { API_URL } from "@/lib/config";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL;
 
 export async function getDashboardSummary(): Promise<DashboardSummaryResponse> {
   const response = await fetch(`${API_URL}/api/sync/dashboard-summary`, {

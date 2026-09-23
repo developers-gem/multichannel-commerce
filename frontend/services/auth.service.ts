@@ -1,6 +1,5 @@
-const API_URL = process.env.NEXT_PUBLIC_API_URL;
-
 import { LoginRequest, LoginResponse } from "@/types/auth";
+import { API_URL } from "@/lib/config";
 
 export async function login(
   payload: LoginRequest

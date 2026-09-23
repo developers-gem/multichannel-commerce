@@ -1,7 +1,7 @@
 import { CsvImportResponse } from "@/types/csv-import";
 import { getAuthBearerHeader, handleUnauthorized } from "@/lib/api-client";
+import { API_URL } from "@/lib/config";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL;
 
 export async function uploadCsvFile(file: File): Promise<CsvImportResponse> {
   const formData = new FormData();

@@ -6,8 +6,8 @@ import {
 } from "@/types/integration";
 import { ApiResponse } from "@/types/common";
 import { getAuthHeaders, handleUnauthorized } from "@/lib/api-client";
+import { API_URL } from "@/lib/config";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL;
 
 export async function getIntegrations(): Promise<IntegrationResponse> {
   const response = await fetch(`${API_URL}/api/integrations`, {
