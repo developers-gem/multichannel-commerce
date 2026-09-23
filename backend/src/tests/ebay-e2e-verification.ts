@@ -66,7 +66,7 @@ if (!testClientId || !testRuName || !testSecret) {
 
   // -------------------------------------------------------------------
   // Task 3 & 4: Authenticated Authorization URL Generation Verification
-  // -------------------------------------------------------------------
+  // -------------------------------------------------------------------v 
   console.log("\n--- Task 3 & 4: Authenticated Authorization URL Generation ---");
   const authUrl = await integrationService.getEbayAuthorizeUrl(mockUserId);
   assert(!!authUrl, "Authenticated user receives an eBay Sandbox authorization URL");

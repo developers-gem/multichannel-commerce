@@ -158,8 +158,9 @@ export default function PrivacyPolicyPage() {
               <li>Wizmart processes eBay API OAuth authorization tokens, marketplace IDs (such as <code>EBAY_US</code>), currency configurations, and fulfillment, payment, and return policy IDs provided by the merchant.</li>
               <li>Catalog updates, pricing, and stock levels are submitted to eBay's Inventory and Listing APIs in compliance with eBay Developer API terms.</li>
               <li>Wizmart stores eBay seller profile URLs and configuration parameters securely scoped to your user account.</li>
-            </ul>
+            </ul> 
           </section>
+         
 
           {/* Section 6 */}
           <section id="shopify-information" className="scroll-mt-24">
