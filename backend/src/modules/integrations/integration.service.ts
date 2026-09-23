@@ -284,12 +284,16 @@ class IntegrationService {
     try {
       const tokenRes = await axios.post(
         `https://${cleanShop}/admin/oauth/access_token`,
-        {
+        new URLSearchParams({
           client_id: env.SHOPIFY_CLIENT_ID,
           client_secret: env.SHOPIFY_CLIENT_SECRET,
-          code,
-        },
-        { timeout: 15000 }
+          code: String(code),
+          expiring: "1",
+        }).toString(),
+        {
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          timeout: 15000,
+        }
       );
 
       tokenData = tokenRes.data;
