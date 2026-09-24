@@ -1,6 +1,6 @@
 # Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
 
-client_id = "97f0984a682997effdae76e10b3bb975"
+client_id = "980aeb4e6505f020ced5920fa3578b7d"
 name = "MultiChannel Commerce"
 application_url = "https://multichannel-commerce-ruddy.vercel.app"
 embedded = false
