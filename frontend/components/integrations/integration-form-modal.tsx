@@ -12,7 +12,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Integration, PlatformType } from "@/types/integration";
 import { useCreateIntegration, useUpdateIntegration } from "@/hooks/use-integrations";
-import { initiateShopifyAuthorize } from "@/services/integration.service";
+import {
+  initiateShopifyAuthorize,
+  initiateEbayAuthorize,
+} from "@/services/integration.service";
 
 function normalizeShopifyDomain(input: string): string {
   let clean = (input || "").trim().toLowerCase();
@@ -35,17 +38,32 @@ const getApiBaseUrl = () => {
   const rawUrl = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000").replace(/\/+$/, "");
   return rawUrl.endsWith("/api") ? rawUrl : `${rawUrl}/api`;
 };
+const handleEbayOAuthConnect = async () => {
+  try {
+    toast.info("Connecting to eBay...");
 
+    const res = await initiateEbayAuthorize();
+
+    const authUrl = res?.data?.authUrl;
+
+    if (!authUrl) {
+      throw new Error("eBay authorization URL was not generated");
+    }
+
+    window.location.href = authUrl;
+  } catch (err: any) {
+    toast.error(err.message || "Failed to start eBay authorization");
+  }
+};
 const integrationSchema = z.object({
   platform: z.enum(["SHOPIFY", "EBAY", "CUSTOM_WEBSITE"] as const),
-  storeName: z.string().min(2, "Store name must be at least 2 characters"),
-  storeUrl: z.string().min(3, "Store URL or Base URL is required"),
 
-  // Platform-specific credentials
+  storeName: z.string(),
+  storeUrl: z.string(),
+
   accessToken: z.string().optional(),
   apiKey: z.string().optional(),
 
-  // eBay Policy IDs & Details
   marketplaceId: z.string().optional(),
   currency: z.string().optional(),
   fulfillmentPolicyId: z.string().optional(),
@@ -162,10 +180,15 @@ export default function IntegrationFormModal({
   };
 
   const onSubmit = (values: IntegrationFormValues) => {
-    if (values.platform === "SHOPIFY" && !isEditing) {
-      handleShopifyOAuthConnect();
-      return;
-    }
+   if (values.platform === "SHOPIFY" && !isEditing) {
+  handleShopifyOAuthConnect();
+  return;
+}
+
+if (values.platform === "EBAY" && !isEditing) {
+  handleEbayOAuthConnect();
+  return;
+}
 
     // Normalize URL format
     let cleanUrl = values.storeUrl.trim();
@@ -288,8 +311,8 @@ export default function IntegrationFormModal({
               {selectedPlatform === "SHOPIFY"
                 ? "Shopify Store Domain (e.g. my-store.myshopify.com)"
                 : selectedPlatform === "CUSTOM_WEBSITE"
-                ? "Base API URL (e.g. https://mycustomsite.com)"
-                : "Store / Seller Profile URL"}
+                  ? "Base API URL (e.g. https://mycustomsite.com)"
+                  : "Store / Seller Profile URL"}
             </Label>
             <Input
               id="storeUrl"
@@ -297,8 +320,8 @@ export default function IntegrationFormModal({
                 selectedPlatform === "SHOPIFY"
                   ? "my-store.myshopify.com"
                   : selectedPlatform === "CUSTOM_WEBSITE"
-                  ? "https://mycustomsite.com"
-                  : "https://ebay.com/usr/seller-account"
+                    ? "https://mycustomsite.com"
+                    : "https://ebay.com/usr/seller-account"
               }
               {...register("storeUrl")}
             />
@@ -337,51 +360,24 @@ export default function IntegrationFormModal({
             </div>
           )}
 
-          {/* eBay Credential Form */}
-          {selectedPlatform === "EBAY" && (
-            <div className="space-y-3 pt-2 border-t">
-              <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-                eBay Seller API Configuration
-              </h4>
+         {/* eBay OAuth Connect */}
+{selectedPlatform === "EBAY" && !isEditing && (
+  <div className="pt-3 border-t space-y-3">
+    <Button
+      type="button"
+      onClick={handleEbayOAuthConnect}
+      className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium flex items-center justify-center gap-2 py-2.5 rounded-xl shadow transition-colors"
+    >
+      <ExternalLink className="h-4 w-4" />
+      Connect eBay (OAuth)
+    </Button>
 
-              <div>
-                <Label htmlFor="accessToken">OAuth Access Token</Label>
-                <Input
-                  id="accessToken"
-                  type="password"
-                  placeholder={isEditing ? "Leave blank to keep existing OAuth token" : "v^1.1#ebay_oauth_token..."}
-                  {...register("accessToken")}
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <Label htmlFor="marketplaceId">Marketplace ID</Label>
-                  <Input id="marketplaceId" placeholder="EBAY_US" {...register("marketplaceId")} />
-                </div>
-                <div>
-                  <Label htmlFor="currency">Currency</Label>
-                  <Input id="currency" placeholder="USD" {...register("currency")} />
-                </div>
-              </div>
-
-              <div>
-                <Label htmlFor="fulfillmentPolicyId">Fulfillment Policy ID</Label>
-                <Input id="fulfillmentPolicyId" placeholder="POL-123456" {...register("fulfillmentPolicyId")} />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <Label htmlFor="paymentPolicyId">Payment Policy ID</Label>
-                  <Input id="paymentPolicyId" placeholder="PAY-123456" {...register("paymentPolicyId")} />
-                </div>
-                <div>
-                  <Label htmlFor="returnPolicyId">Return Policy ID</Label>
-                  <Input id="returnPolicyId" placeholder="RET-123456" {...register("returnPolicyId")} />
-                </div>
-              </div>
-            </div>
-          )}
+    <p className="text-xs text-slate-500 text-center">
+      Redirects securely to eBay to authorize your seller account.
+      No manual API tokens required.
+    </p>
+  </div>
+)}
 
           {/* Custom Website Credential Form */}
           {selectedPlatform === "CUSTOM_WEBSITE" && (
