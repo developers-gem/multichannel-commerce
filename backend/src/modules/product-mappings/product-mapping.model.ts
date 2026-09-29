@@ -35,6 +35,12 @@ const productMappingSchema = new Schema<IProductMapping>(
       default: "",
     },
 
+    externalInventoryItemId: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+
     externalSku: {
       type: String,
       trim: true,

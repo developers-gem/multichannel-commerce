@@ -2,6 +2,7 @@ import Product from "./product.model";
 import ProductMapping from "../product-mappings/product-mapping.model";
 import Integration from "../integrations/integration.model";
 
+
 import {
   CreateProductDto,
   UpdateProductDto,
@@ -15,7 +16,11 @@ import { SyncStatus } from "../../shared/enums/sync-status.enum";
 
 export interface ProductServiceOptions {
   skipSync?: boolean;
+  userId?: string;
 }
+
+
+
 
 class ProductService {
   /**
@@ -34,11 +39,11 @@ class ProductService {
       );
     }
 
-    const product = await Product.create(data);
+    const product = await Product.create({ ...data, ...(options.userId ? { userId: options.userId } : {}) });
 
     // Enqueue sync jobs for pre-existing mappings unless skipSync is explicitly requested
     if (!options.skipSync) {
-      await syncService.enqueueSyncJobsForProduct(product._id.toString(), SyncJobAction.CREATE);
+      await syncService.enqueueSyncJobsForProduct(product._id.toString(), SyncJobAction.CREATE, options.userId);
     }
 
     return product;
@@ -50,12 +55,14 @@ class ProductService {
   async getAll(
     page: number = 1,
     limit: number = 10,
-    search: string = ""
+    search: string = "",
+    userId?: string
   ) {
     const skip = (page - 1) * limit;
 
     const query = {
       isDeleted: false,
+      ...(userId ? { userId } : {}),
       ...(search && {
         $or: [
           { sku: { $regex: search, $options: "i" } },
@@ -101,10 +108,11 @@ class ProductService {
   /**
    * Get Product By Id
    */
-  async getById(id: string) {
+  async getById(id: string, userId?: string) {
     const product = await Product.findOne({
       _id: id,
       isDeleted: false,
+      ...(userId ? { userId } : {}),
     });
 
     if (!product) {
@@ -137,6 +145,7 @@ class ProductService {
       {
         _id: id,
         isDeleted: false,
+        ...(options.userId ? { userId: options.userId } : {}),
       },
       data,
       {
@@ -154,7 +163,7 @@ class ProductService {
 
     // Enqueue sync jobs for active mappings unless skipSync is explicitly requested
     if (!options.skipSync) {
-      await syncService.enqueueSyncJobsForProduct(product._id.toString(), SyncJobAction.UPDATE);
+      await syncService.enqueueSyncJobsForProduct(product._id.toString(), SyncJobAction.UPDATE, options.userId);
     }
 
     return product;
@@ -168,6 +177,7 @@ class ProductService {
       {
         _id: id,
         isDeleted: false,
+        ...(options.userId ? { userId: options.userId } : {}),
       },
       {
         isDeleted: true,
@@ -185,7 +195,7 @@ class ProductService {
     }
 
     if (!options.skipSync) {
-      await syncService.enqueueSyncJobsForProduct(product._id.toString(), SyncJobAction.DELETE);
+      await syncService.enqueueSyncJobsForProduct(product._id.toString(), SyncJobAction.DELETE, options.userId);
     }
 
     return;
@@ -194,8 +204,8 @@ class ProductService {
   /**
    * Publish Master Product to selected sales channel integrations
    */
-  async publishToChannels(productId: string, integrationIds: string[]) {
-    const product = await Product.findOne({ _id: productId, isDeleted: false });
+  async publishToChannels(productId: string, integrationIds: string[], userId?: string) {
+    const product = await Product.findOne({ _id: productId, isDeleted: false, ...(userId ? { userId } : {}) });
     if (!product) {
       throw new ApiError(HTTP_STATUS.NOT_FOUND, "Product not found");
     }
@@ -208,7 +218,7 @@ class ProductService {
 
     for (const integrationId of integrationIds) {
       try {
-        const integration = await Integration.findOne({ _id: integrationId });
+        const integration = await Integration.findOne({ _id: integrationId, ...(userId ? { userId } : {}) });
         if (!integration || !integration.isActive) {
           continue; // Skip inactive integration independently
         }
@@ -256,5 +266,7 @@ class ProductService {
     return results;
   }
 }
+
+
 
 export const productService = new ProductService();

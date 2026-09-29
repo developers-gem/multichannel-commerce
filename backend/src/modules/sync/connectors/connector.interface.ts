@@ -11,6 +11,9 @@ export interface SyncPayload {
   status?: string;
   externalProductId?: string;
   externalVariantId?: string;
+  externalInventoryItemId?: string;
+  storeUrl?: string;
+  integrationId?: string;
   credentials?: Record<string, unknown>;
 }
 
@@ -51,6 +54,7 @@ export interface NormalizedChannelProduct {
 
   externalProductId: string;
   externalVariantId?: string;
+  externalInventoryItemId?: string;
   externalSku?: string;
 }
 
@@ -70,6 +74,8 @@ export interface IChannelImportConnector {
   fetchChannelProducts(
     credentials?: Record<string, unknown>,
     cursor?: string | null,
-    limit?: number
+    limit?: number,
+    storeUrl?: string,
+    integrationId?: string
   ): Promise<PaginatedChannelProducts>;
 }

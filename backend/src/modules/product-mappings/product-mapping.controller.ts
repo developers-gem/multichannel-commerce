@@ -7,7 +7,7 @@ import { HTTP_STATUS } from "../../shared/constants/http-status.constants";
 
 export const createProductMapping = asyncHandler(
   async (req: Request, res: Response) => {
-    const mapping = await productMappingService.create(req.body);
+    const mapping = await productMappingService.create(req.body, String(req.user?._id));
 
     return res.status(HTTP_STATUS.CREATED).json(
       new ApiResponse(
@@ -22,7 +22,7 @@ export const createProductMapping = asyncHandler(
 export const getAllProductMappings = asyncHandler(
   async (req: Request, res: Response) => {
     const productId = req.query.productId ? String(req.query.productId) : undefined;
-    const mappings = await productMappingService.getAll(productId);
+    const mappings = await productMappingService.getAll(productId, String(req.user?._id));
 
     return res.status(HTTP_STATUS.OK).json(
       new ApiResponse(
@@ -37,7 +37,7 @@ export const getAllProductMappings = asyncHandler(
 export const getProductMappingById = asyncHandler(
   async (req: Request, res: Response) => {
     const id = String(req.params.id);
-    const mapping = await productMappingService.getById(id);
+    const mapping = await productMappingService.getById(id, String(req.user?._id));
 
     return res.status(HTTP_STATUS.OK).json(
       new ApiResponse(
@@ -52,7 +52,7 @@ export const getProductMappingById = asyncHandler(
 export const updateProductMapping = asyncHandler(
   async (req: Request, res: Response) => {
     const id = String(req.params.id);
-    const mapping = await productMappingService.update(id, req.body);
+    const mapping = await productMappingService.update(id, req.body, String(req.user?._id));
 
     return res.status(HTTP_STATUS.OK).json(
       new ApiResponse(
@@ -67,7 +67,7 @@ export const updateProductMapping = asyncHandler(
 export const deleteProductMapping = asyncHandler(
   async (req: Request, res: Response) => {
     const id = String(req.params.id);
-    await productMappingService.delete(id);
+    await productMappingService.delete(id, String(req.user?._id));
 
     return res.status(HTTP_STATUS.OK).json(
       new ApiResponse(
@@ -81,7 +81,7 @@ export const deleteProductMapping = asyncHandler(
 export const unpublishProductMapping = asyncHandler(
   async (req: Request, res: Response) => {
     const id = String(req.params.id);
-    const syncJobResult = await productMappingService.unpublishChannel(id);
+    const syncJobResult = await productMappingService.unpublishChannel(id, String(req.user?._id));
 
     return res.status(HTTP_STATUS.ACCEPTED).json(
       new ApiResponse(

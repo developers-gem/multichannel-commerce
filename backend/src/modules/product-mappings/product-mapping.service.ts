@@ -28,11 +28,12 @@ class ProductMappingService {
   /**
    * 1. Create Product Mapping
    */
-  async create(data: CreateProductMappingDto) {
+  async create(data: CreateProductMappingDto, userId?: string) {
     // Step 1: Find Master Product
     const product = await Product.findOne({
       _id: data.productId,
       isDeleted: false,
+      ...(userId ? { userId } : {}),
     });
 
     if (!product) {
@@ -43,7 +44,7 @@ class ProductMappingService {
     }
 
     // Step 2: Find Integration
-    const integration = await Integration.findById(data.integrationId);
+    const integration = await Integration.findOne({ _id: data.integrationId, ...(userId ? { userId } : {}) });
 
     if (!integration) {
       throw new ApiError(
@@ -122,10 +123,14 @@ class ProductMappingService {
   /**
    * 2. Get All Product Mappings (non-deleted, populated without credentials)
    */
-  async getAll(productId?: string) {
+  async getAll(productId?: string, userId?: string) {
     const query: Record<string, unknown> = { isDeleted: false };
     if (productId) {
       query.productId = productId;
+    }
+    if (userId) {
+      const integrations = await Integration.find({ userId }).select("_id");
+      query.integrationId = { $in: integrations.map((integration) => integration._id) };
     }
 
     return ProductMapping.find(query)
@@ -137,15 +142,16 @@ class ProductMappingService {
   /**
    * 3. Get Product Mapping By ID
    */
-  async getById(id: string) {
+  async getById(id: string, userId?: string) {
     const mapping = await ProductMapping.findOne({
       _id: id,
       isDeleted: false,
     })
+      .populate({ path: "integrationId", match: userId ? { userId } : undefined, select: "platform storeName storeUrl isActive userId" })
       .populate("productId", "sku title category price quantity status")
       .populate("integrationId", "platform storeName storeUrl isActive");
 
-    if (!mapping) {
+    if (!mapping || (userId && !mapping.integrationId)) {
       throw new ApiError(
         HTTP_STATUS.NOT_FOUND,
         "Product mapping not found"
@@ -158,7 +164,7 @@ class ProductMappingService {
   /**
    * 4. Update Product Mapping
    */
-  async update(id: string, data: UpdateProductMappingDto) {
+  async update(id: string, data: UpdateProductMappingDto, userId?: string) {
     const mapping = await ProductMapping.findOne({
       _id: id,
       isDeleted: false,
@@ -170,6 +176,9 @@ class ProductMappingService {
         "Product mapping not found"
       );
     }
+
+    const integration = await Integration.findOne({ _id: mapping.integrationId, ...(userId ? { userId } : {}) });
+    if (!integration) throw new ApiError(HTTP_STATUS.NOT_FOUND, "Product mapping not found");
 
     // Check duplicate externalProductId within same integration if changed
     if (
@@ -230,7 +239,7 @@ class ProductMappingService {
   /**
    * 5. Delete (Soft Delete) Product Mapping
    */
-  async delete(id: string) {
+  async delete(id: string, userId?: string) {
     const mapping = await ProductMapping.findOne({
       _id: id,
       isDeleted: false,
@@ -243,6 +252,9 @@ class ProductMappingService {
       );
     }
 
+    const integration = await Integration.findOne({ _id: mapping.integrationId, ...(userId ? { userId } : {}) });
+    if (!integration) throw new ApiError(HTTP_STATUS.NOT_FOUND, "Product mapping not found");
+
     mapping.isDeleted = true;
     mapping.isActive = false;
 
@@ -254,7 +266,7 @@ class ProductMappingService {
   /**
    * 6. Unpublish Product Mapping (Enqueue DELETE Sync Job)
    */
-  async unpublishChannel(id: string) {
+  async unpublishChannel(id: string, userId?: string) {
     const mapping = await ProductMapping.findOne({
       _id: id,
       isDeleted: false,
@@ -264,14 +276,15 @@ class ProductMappingService {
       throw new ApiError(HTTP_STATUS.NOT_FOUND, "Product mapping not found");
     }
 
-    const integration = await Integration.findById(mapping.integrationId);
+    const integration = await Integration.findOne({ _id: mapping.integrationId, ...(userId ? { userId } : {}) });
     if (!integration || !integration.isActive) {
       throw new ApiError(HTTP_STATUS.BAD_REQUEST, "Target channel integration is inactive or missing");
     }
 
     const syncJobResult = await syncService.enqueueSyncJob(
       mapping._id.toString(),
-      SyncJobAction.DELETE
+      SyncJobAction.DELETE,
+      userId
     );
 
     return syncJobResult;

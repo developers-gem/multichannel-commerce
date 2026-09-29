@@ -16,7 +16,7 @@ class SyncService {
   /**
    * Enqueue a Sync Job for a given ProductMapping and Action
    */
-  async enqueueSyncJob(productMappingId: string, action: SyncJobAction = SyncJobAction.UPDATE) {
+  async enqueueSyncJob(productMappingId: string, action: SyncJobAction = SyncJobAction.UPDATE, userId?: string) {
     // 1. Verify ProductMapping exists and is active
     const mapping = await ProductMapping.findOne({
       _id: productMappingId,
@@ -31,6 +31,7 @@ class SyncService {
     const product = await Product.findOne({
       _id: mapping.productId,
       isDeleted: false,
+      ...(userId ? { userId } : {}),
     });
 
     if (!product) {
@@ -40,6 +41,7 @@ class SyncService {
     // 3. Verify Integration exists and is active
     const integration = await Integration.findOne({
       _id: mapping.integrationId,
+      ...(userId ? { userId } : {}),
     });
 
     if (!integration || !integration.isActive) {
@@ -80,12 +82,8 @@ class SyncService {
 
     // 6. Push job to BullMQ queue
     if (!productSyncQueue) {
-      return {
-        syncLogId: syncLog._id,
-        jobId: syncLog._id.toString(),
-        status: SyncLogStatus.PENDING,
-        fallback: true,
-      };
+      await SyncLog.findByIdAndUpdate(syncLog._id, { status: SyncLogStatus.FAILED, completedAt: new Date(), error: "Sync queue is unavailable" });
+      throw new ApiError(HTTP_STATUS.SERVICE_UNAVAILABLE, "Sync queue is unavailable. Configure Redis and run the worker.");
     }
 
     try {
@@ -98,13 +96,10 @@ class SyncService {
         jobId: job?.id || syncLog._id.toString(),
         status: SyncLogStatus.PENDING,
       };
-    } catch (queueErr) {
-      // Return syncLogId even if queue push succeeds in mock or fallback mode
-      return {
-        syncLogId: syncLog._id,
-        jobId: syncLog._id.toString(),
-        status: SyncLogStatus.PENDING,
-      };
+    } catch (queueErr: any) {
+      const error = queueErr?.message || "Failed to enqueue sync job";
+      await SyncLog.findByIdAndUpdate(syncLog._id, { status: SyncLogStatus.FAILED, completedAt: new Date(), error });
+      throw new ApiError(HTTP_STATUS.SERVICE_UNAVAILABLE, error);
     }
   }
 
@@ -113,7 +108,8 @@ class SyncService {
    */
   async enqueueSyncJobsForProduct(
     productId: string | Types.ObjectId,
-    action: SyncJobAction = SyncJobAction.UPDATE
+    action: SyncJobAction = SyncJobAction.UPDATE,
+    userId?: string
   ) {
     const targetId = new Types.ObjectId(productId.toString());
 
@@ -131,7 +127,7 @@ class SyncService {
 
     for (const mapping of activeMappings) {
       try {
-        const res = await this.enqueueSyncJob(mapping._id.toString(), action);
+        const res = await this.enqueueSyncJob(mapping._id.toString(), action, userId);
         results.push(res);
       } catch (err: any) {
         // Skip duplicate active jobs (409) or inactive integrations (400) without throwing to allow other mappings to process

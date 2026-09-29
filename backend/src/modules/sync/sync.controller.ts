@@ -22,7 +22,7 @@ export const manualSyncProduct = asyncHandler(
     const { productMappingId } = paramValidation.data;
     const action = (req.body?.action as SyncJobAction) || SyncJobAction.UPDATE;
 
-    const result = await syncService.enqueueSyncJob(productMappingId, action);
+    const result = await syncService.enqueueSyncJob(productMappingId, action, String(req.user?._id));
 
     return res.status(HTTP_STATUS.ACCEPTED).json(
       new ApiResponse(true, SYNC_MESSAGES.JOB_ENQUEUED, result)

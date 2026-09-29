@@ -12,11 +12,14 @@ import {
   initiateEbayAuth,
   handleEbayCallback,
 } from "./integration.controller";
+import { handleShopifyWebhook } from "./shopify-webhook.controller";
 
 import { validate } from "../../middlewares/validate.middleware";
 import { createIntegrationSchema } from "./integration.validation";
 
 const router = Router();
+
+router.post("/shopify/webhooks", handleShopifyWebhook);
 
 // Shopify OAuth Routes
 router.get("/shopify/authorize", authenticate, initiateShopifyAuth);
@@ -25,6 +28,7 @@ router.get("/shopify/callback", handleShopifyCallback);
 // eBay OAuth Routes
 router.get("/ebay/authorize", authenticate, initiateEbayAuth);
 router.get("/ebay/callback", handleEbayCallback);
+
 
 router.post(
   "/",

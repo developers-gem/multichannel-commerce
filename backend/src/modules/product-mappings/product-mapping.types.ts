@@ -8,6 +8,7 @@ export interface IProductMapping extends Document {
   sku: string;
   externalProductId: string;
   externalVariantId?: string;
+  externalInventoryItemId?: string;
   externalSku?: string;
   syncStatus: SyncStatus;
   lastSyncedAt?: Date;

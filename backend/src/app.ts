@@ -21,6 +21,8 @@ const app = express();
 app.use(helmet());
 app.use(cors());
 
+// Shopify signs the exact JSON bytes, so capture this route before express.json().
+app.use("/api/integrations/shopify/webhooks", express.raw({ type: "application/json" }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());

@@ -412,7 +412,10 @@ export async function processSyncJob(job: Job<ISyncJobPayload>) {
   try {
     // Step 2: Re-fetch fresh ProductMapping & Product from MongoDB AFTER acquiring lock
     const mapping = await ProductMapping.findOne({ _id: productMappingId, isDeleted: false });
-    const product = await Product.findOne({ _id: productId, isDeleted: false });
+    const product = await Product.findOne({
+      _id: productId,
+      ...(action === SyncJobAction.DELETE ? {} : { isDeleted: false }),
+    });
     const integration = await Integration.findOne({ _id: integrationId });
 
     const currentSyncLog = await SyncLog.findById(syncLogId);
@@ -496,7 +499,10 @@ export async function processSyncJob(job: Job<ISyncJobPayload>) {
       status: product.status,
       externalProductId: mapping.externalProductId,
       externalVariantId: mapping.externalVariantId,
-      credentials: integration.credentials,
+      externalInventoryItemId: mapping.externalInventoryItemId,
+      storeUrl: integration.storeUrl,
+      integrationId: integration._id.toString(),
+      credentials: { ...integration.credentials, storeUrl: integration.storeUrl },
     };
 
     // Step 8: Execute action

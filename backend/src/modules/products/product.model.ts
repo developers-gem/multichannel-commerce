@@ -2,9 +2,15 @@ import mongoose, { Schema } from "mongoose";
 
 import { ProductStatus } from "../../shared/enums/product-status.enum";
 import { SyncStatus } from "../../shared/enums/sync-status.enum";
+import { Types } from "mongoose";
 
 const productSchema = new Schema(
   {
+    userId: {
+      type: Types.ObjectId,
+      ref: "User",
+      index: true,
+    },
     sku: {
       type: String,
       required: true,

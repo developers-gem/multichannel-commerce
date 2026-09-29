@@ -12,7 +12,7 @@ import { HTTP_STATUS } from "../../shared/constants/http-status.constants";
 
 export const createProduct = asyncHandler(
   async (req: Request, res: Response) => {
-    const product = await productService.create(req.body);
+    const product = await productService.create(req.body, { userId: String(req.user?._id) });
 
     return res.status(HTTP_STATUS.CREATED).json(
       new ApiResponse(
@@ -33,7 +33,8 @@ export const getAllProducts = asyncHandler(
     const products = await productService.getAll(
       page,
       limit,
-      search
+      search,
+      String(req.user?._id)
     );
 
     return res.status(HTTP_STATUS.OK).json(
@@ -50,6 +51,7 @@ export const getProductById = asyncHandler(
   async (req: Request, res: Response) => {
     const product = await productService.getById(
       String(req.params.id)
+      , String(req.user?._id)
     );
 
     return res.status(HTTP_STATUS.OK).json(
@@ -66,7 +68,8 @@ export const updateProduct = asyncHandler(
   async (req: Request, res: Response) => {
     const product = await productService.update(
       String(req.params.id),
-      req.body
+      req.body,
+      { userId: String(req.user?._id) }
     );
 
     return res.status(HTTP_STATUS.OK).json(
@@ -83,6 +86,7 @@ export const deleteProduct = asyncHandler(
   async (req: Request, res: Response) => {
     await productService.delete(
       String(req.params.id)
+      , { userId: String(req.user?._id) }
     );
 
     return res.status(HTTP_STATUS.OK).json(
@@ -99,7 +103,8 @@ export const syncProductChannels = asyncHandler(
     const productId = String(req.params.id);
     const syncLogs = await syncService.enqueueSyncJobsForProduct(
       productId,
-      SyncJobAction.UPDATE
+      SyncJobAction.UPDATE,
+      String(req.user?._id)
     );
 
     return res.status(HTTP_STATUS.ACCEPTED).json(
@@ -117,7 +122,7 @@ export const publishProductToChannels = asyncHandler(
     const productId = String(req.params.id);
     const { integrationIds } = req.body;
 
-    const results = await productService.publishToChannels(productId, integrationIds);
+    const results = await productService.publishToChannels(productId, integrationIds, String(req.user?._id));
 
     return res.status(HTTP_STATUS.ACCEPTED).json(
       new ApiResponse(

@@ -11,8 +11,68 @@ import { redisConnection } from "../../config/redis";
 import { normalizeShopifyDomain } from "../../utils/shopify.utils";
 
 import { CreateIntegrationDto } from "./integration.types";
+import Product from "../products/product.model";
+import ProductMapping from "../product-mappings/product-mapping.model";
 
 class IntegrationService {
+  verifyShopifyWebhook(rawBody: Buffer, signature: string): boolean {
+    if (!env.SHOPIFY_CLIENT_SECRET || !signature) return false;
+    const digest = crypto.createHmac("sha256", env.SHOPIFY_CLIENT_SECRET).update(rawBody).digest("base64");
+    const expected = Buffer.from(digest, "utf8");
+    const received = Buffer.from(signature, "utf8");
+    return expected.length === received.length && crypto.timingSafeEqual(expected, received);
+  }
+
+  async handleShopifyWebhook(topic: string, shopDomain: string, payload: Record<string, any>): Promise<void> {
+    const shop = normalizeShopifyDomain(shopDomain);
+    const integration = await Integration.findOne({ platform: Platform.SHOPIFY, storeUrl: shop, isActive: true });
+    if (!integration) return;
+
+    if (topic === "inventory_levels/update") {
+      const inventoryItemId = String(payload.inventory_item_id || "");
+      const quantity = Number(payload.available);
+      if (!inventoryItemId || !Number.isFinite(quantity)) return;
+
+      const mapping = await ProductMapping.findOne({
+        integrationId: integration._id,
+        externalInventoryItemId: inventoryItemId,
+        isDeleted: false,
+      });
+      if (mapping) {
+        await Product.findByIdAndUpdate(mapping.productId, { quantity: Math.max(0, quantity) });
+        await ProductMapping.findByIdAndUpdate(mapping._id, {
+          lastSyncedAt: new Date(),
+          lastSyncError: "",
+        });
+      }
+      return;
+    }
+
+    if (topic === "products/update" || topic === "products/create") {
+      const productId = String(payload.id || "");
+      const variant = payload.variants?.[0];
+      if (!productId || !variant?.sku) return;
+
+      const mapping = await ProductMapping.findOne({
+        integrationId: integration._id,
+        externalProductId: productId,
+        externalVariantId: String(variant.id),
+        isDeleted: false,
+      });
+      if (!mapping) return;
+
+      await Product.findByIdAndUpdate(mapping.productId, {
+        title: payload.title || undefined,
+        description: payload.body_html || "",
+        brand: payload.vendor || "",
+        category: payload.product_type || "",
+        images: (payload.images || []).map((image: any) => image.src).filter(Boolean),
+        price: Math.max(0, Number(variant.price) || 0),
+        quantity: Math.max(0, Number(variant.inventory_quantity) || 0),
+      }, { runValidators: true });
+      await ProductMapping.findByIdAndUpdate(mapping._id, { lastSyncedAt: new Date(), lastSyncError: "" });
+    }
+  }
   /**
    * Create Integration (Manual setup for Non-Shopify platforms)
    */
@@ -244,6 +304,10 @@ class IntegrationService {
 
     const cleanShop = normalizeShopifyDomain(String(shop));
 
+    if (env.SHOPIFY_CLIENT_SECRET && !hmac) {
+      throw new ApiError(HTTP_STATUS.BAD_REQUEST, "Missing Shopify HMAC signature");
+    }
+
     // Verify HMAC if client secret configured
     if (env.SHOPIFY_CLIENT_SECRET && hmac) {
       const map = { ...query };
@@ -353,7 +417,17 @@ class IntegrationService {
     // Run connection health test
     await this.testConnection(String(integration._id), stateData.userId);
 
-    return `${env.FRONTEND_URL}/integrations?shopify_success=true&store=${encodeURIComponent(cleanShop)}`;
+    let syncStatus = "started";
+    try {
+      const { catalogImportService } = await import("../catalog-import/catalog-import.service");
+      await catalogImportService.importChannelCatalog(String(integration._id), stateData.userId);
+      syncStatus = "completed";
+    } catch (syncError: any) {
+      syncStatus = "failed";
+      console.error(`[Shopify] Initial catalog sync failed for ${cleanShop}:`, syncError?.message || syncError);
+    }
+
+    return `${env.FRONTEND_URL}/integrations?shopify_success=true&store=${encodeURIComponent(cleanShop)}&shopify_sync=${syncStatus}`;
   }
 
   private async saveEbayOAuthState(state: string, data: { userId: string; environment: string }): Promise<void> {

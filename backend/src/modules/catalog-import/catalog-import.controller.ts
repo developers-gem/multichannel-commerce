@@ -10,7 +10,7 @@ export const importChannelCatalog = asyncHandler(
     const rawId = req.params.integrationId;
     const integrationId = Array.isArray(rawId) ? rawId[0] : rawId;
 
-    const summary = await catalogImportService.importChannelCatalog(integrationId);
+    const summary = await catalogImportService.importChannelCatalog(integrationId, String(req.user?._id));
 
     return res.status(HTTP_STATUS.OK).json(
       new ApiResponse(true, CATALOG_IMPORT_MESSAGES.IMPORT_SUCCESS, summary)

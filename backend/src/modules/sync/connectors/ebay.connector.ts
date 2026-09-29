@@ -229,8 +229,9 @@ export class EbayConnector implements IMarketplaceConnector, IChannelImportConne
       });
 
       listingId = publishRes.data?.listingId || "";
-    } catch {
-      // Non-blocking fallback
+    } catch (err: any) {
+      const errorMsg = this.sanitizeError(err, token);
+      return { success: false, error: `eBay Offer Publish Error: ${errorMsg}` };
     }
 
     return {
@@ -320,8 +321,9 @@ export class EbayConnector implements IMarketplaceConnector, IChannelImportConne
         headers,
         timeout: 15000,
       });
-    } catch {
-      // Non-blocking fallback
+    } catch (err: any) {
+      const errorMsg = this.sanitizeError(err, token);
+      return { success: false, error: `eBay Price/Quantity Update Error: ${errorMsg}` };
     }
 
     return {

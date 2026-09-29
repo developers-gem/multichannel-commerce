@@ -14,9 +14,9 @@ class CatalogImportService {
   /**
    * Execute channel product catalog import for a given Integration
    */
-  async importChannelCatalog(integrationId: string): Promise<CatalogImportSummary> {
+  async importChannelCatalog(integrationId: string, userId?: string): Promise<CatalogImportSummary> {
     // 1. Verify Integration exists and is active
-    const integration = await Integration.findById(integrationId);
+    const integration = await Integration.findOne({ _id: integrationId, ...(userId ? { userId } : {}) });
 
     if (!integration) {
       throw new ApiError(HTTP_STATUS.NOT_FOUND, CATALOG_IMPORT_MESSAGES.INTEGRATION_NOT_FOUND);
@@ -54,7 +54,9 @@ class CatalogImportService {
         pageData = await importConnector.fetchChannelProducts(
           integration.credentials,
           cursor,
-          limit
+          limit,
+          integration.storeUrl,
+          integration._id.toString()
         );
       } catch (fetchErr: any) {
         throw new ApiError(
@@ -103,11 +105,15 @@ class CatalogImportService {
                 shippingCharge: Math.max(0, normalized.shippingCharge || 0),
                 status: (normalized.status || "ACTIVE") as any,
               },
-              { skipSync: true }
+              { skipSync: true, userId }
             );
             masterProductsCreated++;
           } else {
             // Reuse existing Master Product WITHOUT overwriting existing master price or quantity
+            if (userId && !masterProduct.userId) {
+              masterProduct.userId = userId as any;
+              await masterProduct.save();
+            }
             masterProductsMatched++;
           }
 
@@ -131,6 +137,7 @@ class CatalogImportService {
             // Update existing ProductMapping external identifiers
             mapping.externalProductId = normalized.externalProductId;
             mapping.externalVariantId = normalized.externalVariantId || "";
+            mapping.externalInventoryItemId = normalized.externalInventoryItemId || "";
             mapping.externalSku = normalized.externalSku || skuUpper;
             mapping.syncStatus = SyncStatus.SYNCED;
             mapping.lastSyncedAt = new Date();
@@ -145,6 +152,7 @@ class CatalogImportService {
               sku: skuUpper,
               externalProductId: normalized.externalProductId,
               externalVariantId: normalized.externalVariantId || "",
+              externalInventoryItemId: normalized.externalInventoryItemId || "",
               externalSku: normalized.externalSku || skuUpper,
               syncStatus: SyncStatus.SYNCED,
               lastSyncedAt: new Date(),

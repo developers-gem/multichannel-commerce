@@ -22,10 +22,16 @@ function ShopifyCallbackListener({ refetch }: { refetch: () => void }) {
   useEffect(() => {
     const shopifySuccess = searchParams.get("shopify_success");
     const store = searchParams.get("store");
+    const shopifySync = searchParams.get("shopify_sync");
     const shopifyError = searchParams.get("shopify_error");
 
     if (shopifySuccess === "true") {
       toast.success(`Shopify store ${store ? `"${store}"` : ""} connected successfully!`);
+      if (shopifySync === "completed") {
+        toast.success("Shopify products synchronized successfully.");
+      } else if (shopifySync === "failed") {
+        toast.error("Shopify connected, but the initial product sync failed. Use Import Products to retry.");
+      }
       refetch();
       router.replace("/integrations");
     } else if (shopifyError) {

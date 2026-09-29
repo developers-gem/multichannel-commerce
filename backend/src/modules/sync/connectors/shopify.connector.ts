@@ -376,7 +376,8 @@ export class ShopifyConnector implements IMarketplaceConnector, IChannelImportCo
    */
   private async resolveLocationId(
     storeUrl: string,
-    credentials?: Record<string, unknown>
+    credentials?: Record<string, unknown>,
+    integrationId?: string
   ): Promise<string | null> {
     if (credentials?.locationId) {
       return String(credentials.locationId);
@@ -395,7 +396,7 @@ export class ShopifyConnector implements IMarketplaceConnector, IChannelImportCo
     `;
 
     try {
-      const data = await this.executeGraphQL(storeUrl, credentials, query);
+      const data = await this.executeGraphQL(storeUrl, credentials, query, {}, integrationId);
       const locations = data?.locations?.nodes || [];
 
       const primary = locations.find((l: any) => l.isPrimary) || locations[0];
@@ -427,7 +428,7 @@ export class ShopifyConnector implements IMarketplaceConnector, IChannelImportCo
       };
     }
 
-    const storeUrl = (payload.credentials?.storeUrl as string) || "";
+    const storeUrl = payload.storeUrl || (payload.credentials?.storeUrl as string) || "";
     const credentials = payload.credentials;
 
     const query = `
@@ -475,7 +476,7 @@ export class ShopifyConnector implements IMarketplaceConnector, IChannelImportCo
       })),
     };
 
-    const data = await this.executeGraphQL(storeUrl, credentials, query, variables);
+    const data = await this.executeGraphQL(storeUrl, credentials, query, variables, payload.integrationId);
     const result = data?.productCreate;
 
     if (result?.userErrors && result.userErrors.length > 0) {
@@ -493,14 +494,18 @@ export class ShopifyConnector implements IMarketplaceConnector, IChannelImportCo
       };
     }
 
-    const locationId = await this.resolveLocationId(storeUrl, credentials);
+    const locationId = await this.resolveLocationId(storeUrl, credentials, payload.integrationId);
+    if (!locationId || !variantNode.inventoryItem?.id) {
+      return { success: false, error: "Shopify inventory location or inventory item is unavailable" };
+    }
     if (locationId && variantNode.inventoryItem?.id) {
       await this.setInventoryQuantity(
         storeUrl,
         credentials,
         variantNode.inventoryItem.id,
         locationId,
-        payload.quantity
+        payload.quantity,
+        payload.integrationId
       );
     }
 
@@ -531,7 +536,7 @@ export class ShopifyConnector implements IMarketplaceConnector, IChannelImportCo
       };
     }
 
-    const storeUrl = (payload.credentials?.storeUrl as string) || "";
+    const storeUrl = payload.storeUrl || (payload.credentials?.storeUrl as string) || "";
     const credentials = payload.credentials;
 
     const productQuery = `
@@ -569,7 +574,7 @@ export class ShopifyConnector implements IMarketplaceConnector, IChannelImportCo
       },
     };
 
-    const data = await this.executeGraphQL(storeUrl, credentials, productQuery, productVariables);
+    const data = await this.executeGraphQL(storeUrl, credentials, productQuery, productVariables, payload.integrationId);
     const productResult = data?.productUpdate;
 
     if (productResult?.userErrors && productResult.userErrors.length > 0) {
@@ -612,7 +617,7 @@ export class ShopifyConnector implements IMarketplaceConnector, IChannelImportCo
         ],
       };
 
-      const variantData = await this.executeGraphQL(storeUrl, credentials, bulkVariantQuery, variantVariables);
+      const variantData = await this.executeGraphQL(storeUrl, credentials, bulkVariantQuery, variantVariables, payload.integrationId);
       const bulkResult = variantData?.productVariantsBulkUpdate;
 
       if (bulkResult?.userErrors && bulkResult.userErrors.length > 0) {
@@ -623,15 +628,19 @@ export class ShopifyConnector implements IMarketplaceConnector, IChannelImportCo
       const updatedVariant = bulkResult?.productVariants?.[0];
       const inventoryItemId = updatedVariant?.inventoryItem?.id || variantNode?.inventoryItem?.id;
 
-      const locationId = await this.resolveLocationId(storeUrl, credentials);
+      const locationId = await this.resolveLocationId(storeUrl, credentials, payload.integrationId);
 
+      if (!locationId || !inventoryItemId) {
+        return { success: false, error: "Shopify inventory location or inventory item is unavailable" };
+      }
       if (locationId && inventoryItemId) {
         await this.setInventoryQuantity(
           storeUrl,
           credentials,
           inventoryItemId,
           locationId,
-          payload.quantity
+          payload.quantity,
+          payload.integrationId
         );
       }
     }
@@ -661,7 +670,7 @@ export class ShopifyConnector implements IMarketplaceConnector, IChannelImportCo
       };
     }
 
-    const storeUrl = (payload.credentials?.storeUrl as string) || "";
+    const storeUrl = payload.storeUrl || (payload.credentials?.storeUrl as string) || "";
     const credentials = payload.credentials;
 
     const query = `
@@ -682,7 +691,7 @@ export class ShopifyConnector implements IMarketplaceConnector, IChannelImportCo
       },
     };
 
-    const data = await this.executeGraphQL(storeUrl, credentials, query, variables);
+    const data = await this.executeGraphQL(storeUrl, credentials, query, variables, payload.integrationId);
     const result = data?.productDelete;
 
     if (result?.userErrors && result.userErrors.length > 0) {
@@ -704,7 +713,8 @@ export class ShopifyConnector implements IMarketplaceConnector, IChannelImportCo
     credentials: Record<string, unknown> | undefined,
     inventoryItemId: string,
     locationId: string,
-    quantity: number
+    quantity: number,
+    integrationId?: string
   ): Promise<void> {
     const query = `
       mutation inventorySetQuantities($input: InventorySetQuantitiesInput!) {
@@ -733,9 +743,13 @@ export class ShopifyConnector implements IMarketplaceConnector, IChannelImportCo
     };
 
     try {
-      await this.executeGraphQL(storeUrl, credentials, query, variables);
-    } catch {
-      // Non-blocking fallback
+      const data = await this.executeGraphQL(storeUrl, credentials, query, variables, integrationId);
+      const errors = data?.inventorySetQuantities?.userErrors || [];
+      if (errors.length > 0) {
+        throw new Error(`Shopify inventory update failed: ${errors.map((e: any) => e.message).join("; ")}`);
+      }
+    } catch (error) {
+      throw error;
     }
   }
 
@@ -745,9 +759,11 @@ export class ShopifyConnector implements IMarketplaceConnector, IChannelImportCo
   async fetchChannelProducts(
     credentials?: Record<string, unknown>,
     cursor?: string | null,
-    limit: number = 50
+    limit: number = 50,
+    storeUrl?: string,
+    integrationId?: string
   ): Promise<PaginatedChannelProducts> {
-    const storeUrl = (credentials?.storeUrl as string) || "";
+    const resolvedStoreUrl = storeUrl || (credentials?.storeUrl as string) || "";
     const fetchLimit = Math.min(250, Math.max(1, limit));
 
     const query = `
@@ -775,6 +791,9 @@ export class ShopifyConnector implements IMarketplaceConnector, IChannelImportCo
                 sku
                 price
                 inventoryQuantity
+                inventoryItem {
+                  id
+                }
               }
             }
           }
@@ -787,7 +806,7 @@ export class ShopifyConnector implements IMarketplaceConnector, IChannelImportCo
       variables.after = cursor;
     }
 
-    const data = await this.executeGraphQL(storeUrl, credentials, query, variables);
+    const data = await this.executeGraphQL(resolvedStoreUrl, credentials, query, variables, integrationId);
     const productsConnection = data?.products;
     const pageInfo = productsConnection?.pageInfo;
     const productNodes = productsConnection?.nodes || [];
@@ -818,6 +837,7 @@ export class ShopifyConnector implements IMarketplaceConnector, IChannelImportCo
           status: prod.status || "ACTIVE",
           externalProductId: prod.id,
           externalVariantId: variant.id,
+          externalInventoryItemId: variant.inventoryItem?.id,
           externalSku: skuUpper,
         });
       }
