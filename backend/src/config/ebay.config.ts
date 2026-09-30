@@ -2,14 +2,16 @@
 import dotenv from "dotenv";
 
 dotenv.config();
-const isSandbox = process.env.EBAY_ENVIRONMENT === "sandbox";
+
+const environment = process.env.EBAY_ENVIRONMENT || process.env.EBAY_MODE || "sandbox";
+const isSandbox = environment === "sandbox";
 
 export const ebayConfig = {
-  environment: process.env.EBAY_ENVIRONMENT || "sandbox",
-
+  environment,
   clientId: process.env.EBAY_CLIENT_ID!,
   clientSecret: process.env.EBAY_CLIENT_SECRET!,
-  devId: process.env.EBAY_DEV_ID!,
+  devId: process.env.EBAY_DEV_ID || "",
+  ruName: process.env.EBAY_RU_NAME!, // Added RuName with non-null assertion for eBay OAuth redirection
 
   authorizationUrl: isSandbox
     ? "https://auth.sandbox.ebay.com/oauth2/authorize"
