@@ -2,25 +2,26 @@
 
 client_id = "c4e9967c0db6a4bcddb5042152f644d1"
 name = "MultiChannel Commerce"
-application_url = "https://multichannel-commerce-ruddy.vercel.app"
+application_url = "https://multichannel-commerce-hoee.onrender.com"
 embedded = false
 
 [webhooks]
 api_version = "2026-07"
 
-  [[webhooks.subscriptions]]
-  uri = "https://multichannel-commerce-hoee.onrender.com/api/integrations/shopify/webhooks"
-  topics = [
+[[webhooks.subscriptions]]
+uri = "https://multichannel-commerce-hoee.onrender.com/api/integrations/shopify/webhooks"
+topics = [
   "products/create",
   "products/update",
   "inventory_levels/update"
 ]
 
 [access_scopes]
-# Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
-scopes = "read_inventory,read_products"
+scopes = "read_products,write_products,read_inventory,write_inventory"
 optional_scopes = [ ]
-use_legacy_install_flow = true
 
 [auth]
-redirect_urls = [ ]
+redirect_urls = [ 
+  "http://localhost:3000/api/integrations/shopify/callback",
+  "https://multichannel-commerce-hoee.onrender.com/api/integrations/shopify/callback"
+]
