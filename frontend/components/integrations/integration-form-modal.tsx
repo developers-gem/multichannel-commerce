@@ -440,7 +440,6 @@
 //     </div>
 //   );
 // }
-
 "use client";
 
 import { useEffect } from "react";
@@ -581,7 +580,6 @@ export default function IntegrationFormModal({
 
   const isSubmitting = createMutation.isPending || updateMutation.isPending;
 
-  // Moved inside component scope to access storeUrlValue correctly
   const handleShopifyOAuthConnect = async () => {
     const cleanShop = normalizeShopifyDomain(storeUrlValue);
     if (!cleanShop) {
@@ -745,29 +743,27 @@ export default function IntegrationFormModal({
           )}
 
           {/* Store URL */}
-          <div>
-            <Label htmlFor="storeUrl">
-              {selectedPlatform === "SHOPIFY"
-                ? "Shopify Store Domain (e.g. my-store.myshopify.com)"
-                : selectedPlatform === "CUSTOM_WEBSITE"
-                  ? "Base API URL (e.g. https://mycustomsite.com)"
-                  : "Store / Seller Profile URL"}
-            </Label>
-            <Input
-              id="storeUrl"
-              placeholder={
-                selectedPlatform === "SHOPIFY"
-                  ? "my-store.myshopify.com"
-                  : selectedPlatform === "CUSTOM_WEBSITE"
-                    ? "https://mycustomsite.com"
-                    : "https://ebay.com/usr/seller-account"
-              }
-              {...register("storeUrl")}
-            />
-            {errors.storeUrl && (
-              <p className="mt-1 text-xs text-red-500">{errors.storeUrl.message}</p>
-            )}
-          </div>
+          {selectedPlatform !== "EBAY" && (
+            <div>
+              <Label htmlFor="storeUrl">
+                {selectedPlatform === "SHOPIFY"
+                  ? "Shopify Store Domain (e.g. my-store.myshopify.com)"
+                  : "Base API URL (e.g. https://mycustomsite.com)"}
+              </Label>
+              <Input
+                id="storeUrl"
+                placeholder={
+                  selectedPlatform === "SHOPIFY"
+                    ? "my-store.myshopify.com"
+                    : "https://mycustomsite.com"
+                }
+                {...register("storeUrl")}
+              />
+              {errors.storeUrl && (
+                <p className="mt-1 text-xs text-red-500">{errors.storeUrl.message}</p>
+              )}
+            </div>
+          )}
 
           {/* Shopify OAuth Connect Button */}
           {selectedPlatform === "SHOPIFY" && !isEditing && (
@@ -799,7 +795,7 @@ export default function IntegrationFormModal({
             </div>
           )}
 
-          {/* eBay OAuth Connect */}
+          {/* eBay OAuth Connect Button */}
           {selectedPlatform === "EBAY" && !isEditing && (
             <div className="pt-3 border-t space-y-3">
               <Button
@@ -812,8 +808,7 @@ export default function IntegrationFormModal({
               </Button>
 
               <p className="text-xs text-slate-500 text-center">
-                Redirects securely to eBay to authorize your seller account.
-                No manual API tokens required.
+                Redirects securely to eBay to authorize your seller account. No manual API tokens required.
               </p>
             </div>
           )}
@@ -854,7 +849,7 @@ export default function IntegrationFormModal({
             </div>
           )}
 
-          {selectedPlatform !== "SHOPIFY" && (
+          {selectedPlatform !== "SHOPIFY" && selectedPlatform !== "EBAY" && (
             <div className="flex items-center justify-end gap-3 border-t pt-4">
               <Button type="button" variant="outline" onClick={onClose}>
                 Cancel
