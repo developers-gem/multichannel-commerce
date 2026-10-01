@@ -21,7 +21,7 @@ import dotenv from "dotenv";
 dotenv.config(); // Must be at the very top
 
 import connectDB from "./database/connectDB";
-import { productSyncWorker } from "./modules/sync/sync.worker";
+import { productSyncWorker, startProductSyncWorker } from "./modules/sync/sync.worker";
 
 const startWorker = async () => {
   try {
@@ -33,6 +33,7 @@ const startWorker = async () => {
     }
 
     console.log("⚡ Sync Queue Worker started and listening for jobs...");
+    startProductSyncWorker();
 
     productSyncWorker.on("completed", (job) => {
       console.log(

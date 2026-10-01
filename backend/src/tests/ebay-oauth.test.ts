@@ -145,7 +145,7 @@ async function runTests() {
       });
 
       assert(
-        redirectSuccess === `${env.FRONTEND_URL}/integrations?ebay_success=true`,
+        redirectSuccess.startsWith(`${env.FRONTEND_URL}/integrations?ebay_success=true`),
         "Callback returns success redirect to frontend"
       );
 
@@ -207,7 +207,7 @@ async function runTests() {
       });
 
       assert(
-        redirectSuccess === `${env.FRONTEND_URL}/integrations?ebay_success=true`,
+        redirectSuccess.startsWith(`${env.FRONTEND_URL}/integrations?ebay_success=true`),
         "Callback returns success redirect to frontend"
       );
 

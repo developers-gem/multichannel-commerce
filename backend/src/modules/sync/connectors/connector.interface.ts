@@ -6,6 +6,7 @@ export interface SyncPayload {
   category?: string;
   images?: string[];
   price: number;
+  currency?: string;
   quantity: number;
   shippingCharge?: number;
   status?: string;
@@ -48,6 +49,7 @@ export interface NormalizedChannelProduct {
   category?: string;
   images?: string[];
   price: number;
+  currency?: string;
   quantity: number;
   shippingCharge?: number;
   status?: string;

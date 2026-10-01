@@ -1,4 +1,6 @@
 import axios from "axios";
+import Integration from "../../integrations/integration.model";
+import { env } from "../../../config/env";
 import {
   HealthCheckResult,
   IChannelImportConnector,
@@ -14,9 +16,9 @@ export class EbayConnector implements IMarketplaceConnector, IChannelImportConne
    * Helper to resolve base eBay Inventory API endpoint
    */
   private getBaseUrl(credentials?: Record<string, unknown>): string {
-    const isSandbox =
-      credentials?.environment === "sandbox" ||
-      process.env.EBAY_ENVIRONMENT === "sandbox";
+    const isSandbox = credentials?.environment
+      ? credentials.environment === "sandbox"
+      : env.EBAY_ENVIRONMENT === "sandbox";
 
     return isSandbox
       ? "https://api.sandbox.ebay.com/sell/inventory/v1"
@@ -26,28 +28,131 @@ export class EbayConnector implements IMarketplaceConnector, IChannelImportConne
   /**
    * Helper to extract access token without exposing secrets
    */
-  private getAccessToken(credentials?: Record<string, unknown>): string {
-    const token =
-      (credentials?.accessToken as string) ||
-      (credentials?.token as string);
+  private async ensureValidAccessToken(
+    credentials?: Record<string, unknown>,
+    integrationId?: string
+  ): Promise<string> {
+    const accessToken = String(credentials?.accessToken || credentials?.token || "");
+    const refreshToken = String(credentials?.refreshToken || "");
+    const expiresAt = credentials?.expiresAt
+      ? new Date(credentials.expiresAt as string | Date).getTime()
+      : 0;
 
-    if (!token || !token.trim()) {
-      throw new Error("eBay OAuth access token is missing in integration credentials");
+    if (accessToken && (!expiresAt || expiresAt > Date.now() + 30_000)) return accessToken;
+    if (!refreshToken) throw new Error("eBay authorization expired. Reconnect the eBay account.");
+    if (!env.EBAY_CLIENT_ID || !env.EBAY_CLIENT_SECRET) {
+      throw new Error("eBay OAuth client credentials are not configured");
     }
 
-    return token.trim();
+    const sandbox = credentials?.environment
+      ? credentials.environment === "sandbox"
+      : env.EBAY_ENVIRONMENT === "sandbox";
+    const tokenUrl = sandbox
+      ? "https://api.sandbox.ebay.com/identity/v1/oauth2/token"
+      : "https://api.ebay.com/identity/v1/oauth2/token";
+    const basic = Buffer.from(`${env.EBAY_CLIENT_ID}:${env.EBAY_CLIENT_SECRET}`).toString("base64");
+    let response;
+    try {
+      response = await axios.post(tokenUrl, new URLSearchParams({
+        grant_type: "refresh_token",
+        refresh_token: refreshToken,
+      }).toString(), {
+        headers: {
+          Authorization: `Basic ${basic}`,
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+        timeout: 15000,
+      });
+    } catch (error: any) {
+      const status = error.response?.status;
+      if (status === 400 || status === 401) {
+        throw new Error("eBay authorization expired or was revoked. Reconnect the eBay account.");
+      }
+      throw new Error(`eBay token refresh failed${status ? ` (HTTP ${status})` : ""}`);
+    }
+
+    const refreshedToken = String(response.data?.access_token || "");
+    if (!refreshedToken) throw new Error("eBay token refresh returned no access token");
+    const refreshedExpiry = response.data?.expires_in
+      ? new Date(Date.now() + Number(response.data.expires_in) * 1000)
+      : undefined;
+    const rotatedRefreshToken = String(response.data?.refresh_token || refreshToken);
+
+    if (credentials) {
+      credentials.accessToken = refreshedToken;
+      credentials.refreshToken = rotatedRefreshToken;
+      if (refreshedExpiry) credentials.expiresAt = refreshedExpiry;
+    }
+    if (integrationId) {
+      const set: Record<string, unknown> = {
+        "credentials.accessToken": refreshedToken,
+        "credentials.refreshToken": rotatedRefreshToken,
+      };
+      if (refreshedExpiry) set["credentials.expiresAt"] = refreshedExpiry;
+      await Integration.findByIdAndUpdate(integrationId, { $set: set });
+    }
+    return refreshedToken;
   }
 
-  /**
-   * Helper to generate sanitized HTTP request headers
-   */
-  private getHeaders(credentials?: Record<string, unknown>) {
-    const token = this.getAccessToken(credentials);
+  private headersForToken(token: string, credentials?: Record<string, unknown>) {
     return {
       Authorization: `Bearer ${token}`,
       "Content-Type": "application/json",
       "Content-Language": "en-US",
+      ...(credentials?.marketplaceId ? { "X-EBAY-C-MARKETPLACE-ID": String(credentials.marketplaceId) } : {}),
     };
+  }
+
+  public async discoverSellerConfiguration(
+    credentials: Record<string, unknown>,
+    integrationId: string
+  ): Promise<{ storeName?: string }> {
+    const token = await this.ensureValidAccessToken(credentials, integrationId);
+    const sandbox = credentials.environment === "sandbox";
+    const apiHost = sandbox ? "https://api.sandbox.ebay.com" : "https://api.ebay.com";
+    const identityHost = sandbox ? "https://apiz.sandbox.ebay.com" : "https://apiz.ebay.com";
+    const marketplaceId = String(credentials.marketplaceId || "EBAY_US");
+    const headers = this.headersForToken(token, credentials);
+    const getPolicy = async (path: string, field: string): Promise<any[]> => {
+      const response = await axios.get(`${apiHost}/sell/account/v1/${path}`, {
+        params: { marketplace_id: marketplaceId }, headers, timeout: 15000,
+      });
+      return response.data?.[field] || [];
+    };
+
+    const results = await Promise.allSettled([
+      getPolicy("fulfillment_policy", "fulfillmentPolicies"),
+      getPolicy("payment_policy", "paymentPolicies"),
+      getPolicy("return_policy", "returnPolicies"),
+      axios.get(`${apiHost}/sell/inventory/v1/location`, { params: { limit: 100 }, headers, timeout: 15000 }),
+      axios.get(`${identityHost}/commerce/identity/v1/user/`, { headers, timeout: 15000 }),
+    ]);
+    const fulfillment = results[0].status === "fulfilled" ? results[0].value : [];
+    const payment = results[1].status === "fulfilled" ? results[1].value : [];
+    const returns = results[2].status === "fulfilled" ? results[2].value : [];
+    const locations = results[3].status === "fulfilled" ? results[3].value.data?.locations || [] : [];
+    const seller = results[4].status === "fulfilled" ? results[4].value.data : undefined;
+    const firstFulfillment = fulfillment[0];
+    const firstPayment = payment[0];
+    const firstReturn = returns[0];
+    const firstLocation = locations[0];
+    const discovered: Record<string, unknown> = {
+      fulfillmentPolicies: fulfillment,
+      paymentPolicies: payment,
+      returnPolicies: returns,
+      locations,
+      ...(firstFulfillment?.fulfillmentPolicyId ? { fulfillmentPolicyId: firstFulfillment.fulfillmentPolicyId } : {}),
+      ...(firstPayment?.paymentPolicyId ? { paymentPolicyId: firstPayment.paymentPolicyId } : {}),
+      ...(firstReturn?.returnPolicyId ? { returnPolicyId: firstReturn.returnPolicyId } : {}),
+      ...(firstLocation?.merchantLocationKey ? { merchantLocationKey: firstLocation.merchantLocationKey } : {}),
+      ...(seller?.username ? { sellerUsername: seller.username } : {}),
+      ...(seller?.userId ? { sellerUserId: seller.userId } : {}),
+    };
+    await Integration.findByIdAndUpdate(integrationId, {
+      $set: Object.fromEntries(Object.entries(discovered).map(([key, value]) => [`credentials.${key}`, value])),
+    });
+    Object.assign(credentials, discovered);
+    return seller?.username ? { storeName: String(seller.username) } : {};
   }
 
   /**
@@ -87,7 +192,8 @@ export class EbayConnector implements IMarketplaceConnector, IChannelImportConne
    */
   async testConnection(
     credentials?: Record<string, unknown>,
-    _storeUrl?: string
+    _storeUrl?: string,
+    integrationId?: string
   ): Promise<HealthCheckResult> {
     if (process.env.MOCK_SYNC_CONNECTORS === "true") {
       return {
@@ -97,9 +203,9 @@ export class EbayConnector implements IMarketplaceConnector, IChannelImportConne
     }
 
     try {
-      const token = this.getAccessToken(credentials);
+      const token = await this.ensureValidAccessToken(credentials, integrationId);
       const baseUrl = this.getBaseUrl(credentials);
-      const headers = this.getHeaders(credentials);
+      const headers = this.headersForToken(token, credentials);
 
       await axios.get(`${baseUrl}/inventory_item?limit=1&offset=0`, {
         headers,
@@ -111,7 +217,7 @@ export class EbayConnector implements IMarketplaceConnector, IChannelImportConne
         message: "eBay connection healthy: OAuth access token validated successfully",
       };
     } catch (err: any) {
-      const token = (credentials?.accessToken as string) || "";
+      const token = String(credentials?.accessToken || "");
       const sanitizedMsg = this.sanitizeError(err, token);
 
       return {
@@ -136,11 +242,22 @@ export class EbayConnector implements IMarketplaceConnector, IChannelImportConne
     }
 
     const credentials = payload.credentials;
-    const token = this.getAccessToken(credentials);
+    const token = await this.ensureValidAccessToken(credentials, payload.integrationId);
     const baseUrl = this.getBaseUrl(credentials);
-    const headers = this.getHeaders(credentials);
+    const headers = this.headersForToken(token, credentials);
 
     const sku = payload.sku;
+    const fulfillmentPolicyId = credentials?.fulfillmentPolicyId as string;
+    const paymentPolicyId = credentials?.paymentPolicyId as string;
+    const returnPolicyId = credentials?.returnPolicyId as string;
+    const merchantLocationKey = credentials?.merchantLocationKey as string;
+
+    if (!fulfillmentPolicyId || !paymentPolicyId || !returnPolicyId || !merchantLocationKey) {
+      return {
+        success: false,
+        error: "eBay listing policies or inventory location are not configured. Reconnect or select valid seller policies.",
+      };
+    }
 
     const inventoryItemBody = {
       product: {
@@ -168,19 +285,6 @@ export class EbayConnector implements IMarketplaceConnector, IChannelImportConne
       return { success: false, error: `eBay Inventory Item Create Error: ${errorMsg}` };
     }
 
-    const fulfillmentPolicyId = credentials?.fulfillmentPolicyId as string;
-    const paymentPolicyId = credentials?.paymentPolicyId as string;
-    const returnPolicyId = credentials?.returnPolicyId as string;
-    const merchantLocationKey = (credentials?.merchantLocationKey as string) || "DEFAULT";
-
-    if (!fulfillmentPolicyId || !paymentPolicyId || !returnPolicyId) {
-      return {
-        success: false,
-        error:
-          "eBay listing requires fulfillmentPolicyId, paymentPolicyId, and returnPolicyId configured in Integration credentials",
-      };
-    }
-
     const offerBody = {
       sku,
       marketplaceId: (credentials?.marketplaceId as string) || "EBAY_US",
@@ -188,7 +292,7 @@ export class EbayConnector implements IMarketplaceConnector, IChannelImportConne
       pricingSummary: {
         price: {
           value: String(payload.price),
-          currency: (credentials?.currency as string) || "USD",
+          currency: payload.currency || (credentials?.currency as string) || "USD",
         },
       },
       listingPolicies: {
@@ -229,6 +333,9 @@ export class EbayConnector implements IMarketplaceConnector, IChannelImportConne
       });
 
       listingId = publishRes.data?.listingId || "";
+      if (!listingId) {
+        return { success: false, error: "eBay published the offer without returning a listing ID" };
+      }
     } catch (err: any) {
       const errorMsg = this.sanitizeError(err, token);
       return { success: false, error: `eBay Offer Publish Error: ${errorMsg}` };
@@ -263,9 +370,9 @@ export class EbayConnector implements IMarketplaceConnector, IChannelImportConne
     }
 
     const credentials = payload.credentials;
-    const token = this.getAccessToken(credentials);
+    const token = await this.ensureValidAccessToken(credentials, payload.integrationId);
     const baseUrl = this.getBaseUrl(credentials);
-    const headers = this.getHeaders(credentials);
+    const headers = this.headersForToken(token, credentials);
 
     const offerId = payload.externalProductId;
     const sku = payload.sku;
@@ -305,7 +412,7 @@ export class EbayConnector implements IMarketplaceConnector, IChannelImportConne
               offerId,
               price: {
                 value: String(payload.price),
-                currency: (credentials?.currency as string) || "USD",
+                currency: payload.currency || (credentials?.currency as string) || "USD",
               },
             },
           ],
@@ -317,10 +424,14 @@ export class EbayConnector implements IMarketplaceConnector, IChannelImportConne
     };
 
     try {
-      await axios.post(`${baseUrl}/bulk_update_price_quantity`, bulkUpdateBody, {
+      const response = await axios.post(`${baseUrl}/bulk_update_price_quantity`, bulkUpdateBody, {
         headers,
         timeout: 15000,
       });
+      const failed = (response.data?.responses || []).find((entry: any) => entry.statusCode >= 400 || entry.errors?.length);
+      if (failed) {
+        return { success: false, error: `eBay rejected price/quantity update: ${failed.errors?.map((item: any) => item.message).join("; ") || `HTTP ${failed.statusCode}`}` };
+      }
     } catch (err: any) {
       const errorMsg = this.sanitizeError(err, token);
       return { success: false, error: `eBay Price/Quantity Update Error: ${errorMsg}` };
@@ -353,9 +464,9 @@ export class EbayConnector implements IMarketplaceConnector, IChannelImportConne
     }
 
     const credentials = payload.credentials;
-    const token = this.getAccessToken(credentials);
+    const token = await this.ensureValidAccessToken(credentials, payload.integrationId);
     const baseUrl = this.getBaseUrl(credentials);
-    const headers = this.getHeaders(credentials);
+    const headers = this.headersForToken(token, credentials);
 
     const offerId = payload.externalProductId;
 
@@ -379,8 +490,9 @@ export class EbayConnector implements IMarketplaceConnector, IChannelImportConne
           },
           { headers, timeout: 15000 }
         );
-      } catch {
-        // Non-blocking fallback
+      } catch (err: any) {
+        const errorMsg = this.sanitizeError(err, token);
+        return { success: false, error: `eBay inventory withdrawal failed: ${errorMsg}` };
       }
     }
 
@@ -396,11 +508,13 @@ export class EbayConnector implements IMarketplaceConnector, IChannelImportConne
   async fetchChannelProducts(
     credentials?: Record<string, unknown>,
     cursor?: string | null,
-    limit: number = 50
+    limit: number = 50,
+    _storeUrl?: string,
+    integrationId?: string
   ): Promise<PaginatedChannelProducts> {
     const baseUrl = this.getBaseUrl(credentials);
-    const token = this.getAccessToken(credentials);
-    const headers = this.getHeaders(credentials);
+    const token = await this.ensureValidAccessToken(credentials, integrationId);
+    const headers = this.headersForToken(token, credentials);
 
     const fetchLimit = Math.min(100, Math.max(1, limit));
     const offset = cursor ? Number(cursor) || 0 : 0;
@@ -430,25 +544,27 @@ export class EbayConnector implements IMarketplaceConnector, IChannelImportConne
         const images = prod.imageUrls || [];
         const quantity = Number(item.availability?.shipToLocationAvailability?.quantity) || 0;
 
-        let offerId = "";
-        let listingId = "";
+        let publishedOffer: any;
 
         // Query offer associated with SKU
         try {
-          const offerRes = await axios.get(
-            `${baseUrl}/offer?sku=${encodeURIComponent(rawSku)}`,
-            { headers, timeout: 10000 }
-          );
+          const offerRes = await axios.get(`${baseUrl}/offer`, {
+            params: { sku: rawSku, marketplace_id: credentials?.marketplaceId || "EBAY_US", limit: 100 },
+            headers,
+            timeout: 10000,
+          });
           const offers = offerRes.data?.offers || [];
           if (offers.length > 0) {
-            offerId = offers[0].offerId || "";
-            listingId = offers[0].listing?.listingId || "";
+            publishedOffer = offers.find((offer: any) => offer.status === "PUBLISHED") || offers[0];
           }
-        } catch {
-          // If no offer created yet, offerId fallback to SKU key
-          offerId = `OFFER-${skuUpper}`;
+        } catch (err: any) {
+          throw new Error(`eBay offer lookup failed for SKU ${skuUpper}: ${this.sanitizeError(err, token)}`);
         }
 
+        // Inventory items without an offer are not published listings; don't fabricate an offer ID.
+        if (!publishedOffer?.offerId) continue;
+        const offerPrice = Number(publishedOffer.pricingSummary?.price?.value);
+        const currency = String(publishedOffer.pricingSummary?.price?.currency || credentials?.currency || "USD");
         normalizedList.push({
           sku: skuUpper,
           title,
@@ -456,12 +572,13 @@ export class EbayConnector implements IMarketplaceConnector, IChannelImportConne
           brand,
           category: "",
           images,
-          price: 0, // Offer price resolved if offer exists
+          price: Number.isFinite(offerPrice) ? offerPrice : 0,
+          currency,
           quantity,
           shippingCharge: 0,
-          status: "ACTIVE",
-          externalProductId: offerId || `OFFER-${skuUpper}`,
-          externalVariantId: listingId,
+          status: publishedOffer.status === "PUBLISHED" ? "ACTIVE" : "DRAFT",
+          externalProductId: publishedOffer.offerId,
+          externalVariantId: publishedOffer.listing?.listingId || "",
           externalSku: skuUpper,
         });
       }

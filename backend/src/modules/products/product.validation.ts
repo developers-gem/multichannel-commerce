@@ -34,6 +34,8 @@ export const createProductSchema = z.object({
     .number()
     .min(0, "Price cannot be negative"),
 
+  currency: z.string().trim().length(3).toUpperCase().optional(),
+
   quantity: z
     .number()
     .min(0, "Quantity cannot be negative"),

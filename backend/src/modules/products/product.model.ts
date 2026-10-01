@@ -53,6 +53,14 @@ const productSchema = new Schema(
       min: 0,
     },
 
+    currency: {
+      type: String,
+      trim: true,
+      uppercase: true,
+      minlength: 3,
+      maxlength: 3,
+    },
+
     quantity: {
       type: Number,
       required: true,

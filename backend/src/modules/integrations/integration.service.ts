@@ -647,6 +647,7 @@ import Integration from "./integration.model";
 import { ApiError } from "../../utils/ApiError";
 import { HTTP_STATUS } from "../../shared/constants/http-status.constants";
 import { MarketplaceConnectorFactory } from "../sync/connectors/connector.factory";
+import { EbayConnector } from "../sync/connectors/ebay.connector";
 import { Platform } from "../../shared/enums/platform.enum";
 import { env } from "../../config/env";
 import { redisConnection } from "../../config/redis";
@@ -1157,17 +1158,10 @@ class IntegrationService {
    * eBay OAuth: Generate Authorization URL & Bind State to SaaS User
    */
   async getEbayAuthorizeUrl(userId: string): Promise<string> {
-    if (!env.EBAY_CLIENT_ID) {
+    if (!env.EBAY_CLIENT_ID || !env.EBAY_CLIENT_SECRET || !env.EBAY_RU_NAME) {
       throw new ApiError(
         HTTP_STATUS.BAD_REQUEST,
-        "eBay Client ID is missing. Please set EBAY_CLIENT_ID in backend environment."
-      );
-    }
-
-    if (!env.EBAY_RU_NAME) {
-      throw new ApiError(
-        HTTP_STATUS.BAD_REQUEST,
-        "eBay RuName (redirect URI) is missing. Please set EBAY_RU_NAME in backend environment."
+        `eBay ${env.EBAY_ENVIRONMENT} OAuth is not configured. Set the matching environment client ID, client secret, and RuName.`
       );
     }
 
@@ -1176,7 +1170,11 @@ class IntegrationService {
       ? "https://auth.sandbox.ebay.com/oauth2/authorize"
       : "https://auth.ebay.com/oauth2/authorize";
 
-    const scopes = "https://api.ebay.com/oauth/api_scope/sell.inventory https://api.ebay.com/oauth/api_scope/sell.account";
+    const scopes = [
+      "https://api.ebay.com/oauth/api_scope/sell.inventory",
+      "https://api.ebay.com/oauth/api_scope/sell.account",
+      "https://api.ebay.com/oauth/api_scope/commerce.identity.readonly",
+    ].join(" ");
     const state = crypto.randomBytes(16).toString("hex");
 
     await this.saveEbayOAuthState(state, { userId, environment: env.EBAY_ENVIRONMENT });
@@ -1215,7 +1213,10 @@ class IntegrationService {
       );
     }
 
-    const isSandbox = stateData.environment === "sandbox" || env.EBAY_ENVIRONMENT === "sandbox";
+    if (stateData.environment !== env.EBAY_ENVIRONMENT) {
+      throw new ApiError(HTTP_STATUS.BAD_REQUEST, "eBay OAuth environment changed during authorization. Restart the connection flow.");
+    }
+    const isSandbox = stateData.environment === "sandbox";
     const tokenEndpoint = isSandbox
       ? "https://api.sandbox.ebay.com/identity/v1/oauth2/token"
       : "https://api.ebay.com/identity/v1/oauth2/token";
@@ -1259,9 +1260,8 @@ class IntegrationService {
 
     const credentialsObj: Record<string, any> = {
       accessToken,
-      marketplaceId: "EBAY_US",
-      currency: "USD",
-      merchantLocationKey: "DEFAULT",
+      marketplaceId: env.EBAY_MARKETPLACE_ID || "EBAY_US",
+      currency: env.EBAY_CURRENCY || "USD",
       environment: isSandbox ? "sandbox" : "production",
     };
 
@@ -1276,6 +1276,7 @@ class IntegrationService {
         Date.now() + tokenData.refresh_token_expires_in * 1000
       );
     }
+    if (tokenData.scope) credentialsObj.scope = tokenData.scope;
 
     const storeUrl = isSandbox ? "sandbox.ebay.com" : "ebay.com";
 
@@ -1306,14 +1307,36 @@ class IntegrationService {
       });
     }
 
-    // Non-blocking health check: failure does not break successful OAuth callback or token persistence
+    let setupStatus = "complete";
     try {
-      await this.testConnection(String(integration._id), stateData.userId);
-    } catch (_) {
-      // Non-blocking
+      const connector = new EbayConnector();
+      const discovered = await connector.discoverSellerConfiguration(
+        integration.credentials,
+        String(integration._id)
+      );
+      if (discovered.storeName) {
+        integration.storeName = discovered.storeName;
+        await integration.save();
+      }
+      if (!integration.credentials.fulfillmentPolicyId ||
+          !integration.credentials.paymentPolicyId ||
+          !integration.credentials.returnPolicyId ||
+          !integration.credentials.merchantLocationKey) {
+        setupStatus = "configuration_pending";
+      }
+    } catch (error: any) {
+      setupStatus = "configuration_pending";
+      console.error(`[eBay] Seller configuration discovery failed: ${error?.message || error}`);
     }
 
-    return `${env.FRONTEND_URL}/integrations?ebay_success=true`;
+    const integrationId = String(integration._id);
+    const ownerId = stateData.userId;
+    void import("../catalog-import/catalog-import.service")
+      .then(({ catalogImportService }) => catalogImportService.importChannelCatalog(integrationId, ownerId))
+      .then(() => console.info(`[eBay] Initial catalog sync completed for integration ${integrationId}`))
+      .catch((error: unknown) => console.error(`[eBay] Initial catalog sync failed for integration ${integrationId}:`, error instanceof Error ? error.message : "unknown error"));
+
+    return `${env.FRONTEND_URL}/integrations?ebay_success=true&ebay_sync=started&ebay_setup=${setupStatus}`;
   }
 }
 

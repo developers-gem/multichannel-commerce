@@ -12,6 +12,7 @@ export interface CreateProductDto {
   images?: string[];
 
   price: number;
+  currency?: string;
   quantity: number;
   shippingCharge?: number;
 

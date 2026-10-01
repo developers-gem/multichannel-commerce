@@ -294,9 +294,14 @@ function EbayCallbackListener({ refetch }: { refetch: () => void }) {
   useEffect(() => {
     const ebaySuccess = searchParams.get("ebay_success");
     const ebayError = searchParams.get("ebay_error");
+    const ebaySync = searchParams.get("ebay_sync");
+    const ebaySetup = searchParams.get("ebay_setup");
 
     if (ebaySuccess === "true") {
       toast.success("eBay store connected successfully!");
+      if (ebaySync === "completed") toast.success("eBay listings synchronized successfully.");
+      if (ebaySync === "failed") toast.error("eBay connected, but listing synchronization failed. Use Import Products to retry.");
+      if (ebaySetup === "configuration_pending") toast.warning("eBay connected, but seller policies or inventory location need configuration before publishing new listings.");
       refetch();
       router.replace("/integrations");
     } else if (ebayError) {
@@ -365,8 +370,8 @@ export default function IntegrationsPage() {
           window.location.href = res.data.authUrl;
           return;
         }
-      } catch (err: any) {
-        toast.error(err.message || "Failed to start eBay connection");
+      } catch (err: unknown) {
+        toast.error(err instanceof Error ? err.message : "Failed to start eBay connection");
       }
       return;
     }

@@ -12,6 +12,7 @@ export interface Product {
   category: string;
   images: string[];
   price: number;
+  currency?: string;
   quantity: number;
   shippingCharge: number;
   status: ProductStatus;
@@ -45,6 +46,7 @@ export interface CreateProductInput {
   category?: string;
   images?: string[];
   price: number;
+  currency?: string;
   quantity: number;
   shippingCharge?: number;
   status?: ProductStatus;
@@ -57,6 +59,7 @@ export interface UpdateProductInput {
   category?: string;
   images?: string[];
   price?: number;
+  currency?: string;
   quantity?: number;
   shippingCharge?: number;
   status?: ProductStatus;

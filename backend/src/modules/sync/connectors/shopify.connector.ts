@@ -385,11 +385,12 @@ export class ShopifyConnector implements IMarketplaceConnector, IChannelImportCo
 
     const query = `
       query getLocations {
-        locations(first: 5, includeAppLocations: false) {
+        locations(first: 250, includeAppLocations: false) {
           nodes {
             id
             name
             isPrimary
+            isActive
           }
         }
       }
@@ -399,10 +400,11 @@ export class ShopifyConnector implements IMarketplaceConnector, IChannelImportCo
       const data = await this.executeGraphQL(storeUrl, credentials, query, {}, integrationId);
       const locations = data?.locations?.nodes || [];
 
-      const primary = locations.find((l: any) => l.isPrimary) || locations[0];
+      const activeLocations = locations.filter((location: any) => location.isActive !== false);
+      const primary = activeLocations.find((location: any) => location.isPrimary) || activeLocations[0];
       return primary ? primary.id : null;
-    } catch {
-      return null;
+    } catch (error: any) {
+      throw new Error(`Unable to resolve Shopify inventory location: ${error?.message || "request failed"}`);
     }
   }
 
@@ -716,10 +718,82 @@ export class ShopifyConnector implements IMarketplaceConnector, IChannelImportCo
     quantity: number,
     integrationId?: string
   ): Promise<void> {
+    const trackedQuery = `
+      query inventoryTrackingAndLevels($inventoryItemId: ID!) {
+        inventoryItem(id: $inventoryItemId) {
+          id
+          tracked
+          inventoryLevels(first: 250) {
+            nodes {
+              location { id }
+            }
+          }
+        }
+      }
+    `;
+    const trackingData = await this.executeGraphQL(
+      storeUrl,
+      credentials,
+      trackedQuery,
+      { inventoryItemId },
+      integrationId
+    );
+    const inventoryItem = trackingData?.inventoryItem;
+    if (!inventoryItem?.id) throw new Error(`Shopify inventory item ${inventoryItemId} was not found`);
+
+    if (!inventoryItem.tracked) {
+      const trackMutation = `
+        mutation enableInventoryTracking($id: ID!, $input: InventoryItemInput!) {
+          inventoryItemUpdate(id: $id, input: $input) {
+            inventoryItem { id tracked }
+            userErrors { field message }
+          }
+        }
+      `;
+      const trackData = await this.executeGraphQL(
+        storeUrl,
+        credentials,
+        trackMutation,
+        { id: inventoryItemId, input: { tracked: true } },
+        integrationId
+      );
+      const trackErrors = trackData?.inventoryItemUpdate?.userErrors || [];
+      if (trackErrors.length) {
+        throw new Error(`Shopify could not enable inventory tracking: ${trackErrors.map((error: any) => error.message).join("; ")}`);
+      }
+    }
+
+    const activeAtLocation = (inventoryItem.inventoryLevels?.nodes || []).some(
+      (level: any) => level.location?.id === locationId
+    );
+    if (!activeAtLocation) {
+      const activateMutation = `
+        mutation activateInventory($inventoryItemId: ID!, $locationId: ID!, $available: Int) {
+          inventoryActivate(inventoryItemId: $inventoryItemId, locationId: $locationId, available: $available) {
+            inventoryLevel { id }
+            userErrors { field message }
+          }
+        }
+      `;
+      const activateData = await this.executeGraphQL(
+        storeUrl,
+        credentials,
+        activateMutation,
+        { inventoryItemId, locationId, available: Math.max(0, Math.floor(quantity)) },
+        integrationId
+      );
+      const activateErrors = activateData?.inventoryActivate?.userErrors || [];
+      if (activateErrors.length) {
+        throw new Error(`Shopify could not activate inventory at location: ${activateErrors.map((error: any) => error.message).join("; ")}`);
+      }
+    }
+
     const query = `
       mutation inventorySetQuantities($input: InventorySetQuantitiesInput!) {
         inventorySetQuantities(input: $input) {
+          inventoryAdjustmentGroup { createdAt }
           userErrors {
+            code
             field
             message
           }
@@ -746,7 +820,7 @@ export class ShopifyConnector implements IMarketplaceConnector, IChannelImportCo
       const data = await this.executeGraphQL(storeUrl, credentials, query, variables, integrationId);
       const errors = data?.inventorySetQuantities?.userErrors || [];
       if (errors.length > 0) {
-        throw new Error(`Shopify inventory update failed: ${errors.map((e: any) => e.message).join("; ")}`);
+        throw new Error(`Shopify inventory update failed: ${errors.map((e: any) => `${e.code || "USER_ERROR"}: ${e.message}`).join("; ")}`);
       }
     } catch (error) {
       throw error;

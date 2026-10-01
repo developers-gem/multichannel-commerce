@@ -101,6 +101,7 @@ class CatalogImportService {
                 category: normalized.category || "",
                 images: normalized.images || [],
                 price: Math.max(0, normalized.price || 0),
+                currency: normalized.currency,
                 quantity: Math.max(0, normalized.quantity || 0),
                 shippingCharge: Math.max(0, normalized.shippingCharge || 0),
                 status: (normalized.status || "ACTIVE") as any,

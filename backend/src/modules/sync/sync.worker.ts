@@ -304,30 +304,15 @@
 
 
 import { Worker, Job, UnrecoverableError } from "bullmq";
-import Redis from "ioredis";
 import { env } from "../../config/env";
 import Product from "../products/product.model";
 import Integration from "../integrations/integration.model";
 import ProductMapping from "../product-mappings/product-mapping.model";
 import SyncLog from "./sync.model";
 import { MarketplaceConnectorFactory } from "./connectors/connector.factory";
-import { QUEUE_NAME } from "./sync.queue";
+import { QUEUE_NAME, redisConnection } from "./sync.queue";
 import { ISyncJobPayload, SyncJobAction, SyncLogStatus } from "./sync.types";
 import { SyncStatus } from "../../shared/enums/sync-status.enum";
-
-// Use REDIS_URL from Render or construct fallback for local development
-const redisUrl = process.env.REDIS_URL || `redis://${env.REDIS_HOST || 'localhost'}:${env.REDIS_PORT || 6379}`;
-
-const redisConnection = new Redis(redisUrl, {
-  password: env.REDIS_PASSWORD || undefined,
-  db: env.REDIS_DB || 0,
-  maxRetriesPerRequest: null,
-  enableReadyCheck: false,
-});
-
-redisConnection.on("error", (_err) => {
-  // Suppress uncaught background connection log spam if Redis is offline
-});
 
 const LOCK_TTL_MS = 30000; // 30 seconds safe TTL
 
@@ -336,7 +321,7 @@ export async function acquireMappingLock(productMappingId: string): Promise<stri
   const lockValue = `${Date.now()}:${Math.random().toString(36).substring(2)}`;
 
   try {
-    const res = await redisConnection.set(lockKey, lockValue, "PX", LOCK_TTL_MS, "NX");
+    const res = await redisConnection?.set(lockKey, lockValue, "PX", LOCK_TTL_MS, "NX");
     return res === "OK" ? lockValue : null;
   } catch {
     // In test environment without active Redis server, fall back to inline lock
@@ -347,9 +332,9 @@ export async function acquireMappingLock(productMappingId: string): Promise<stri
 export async function releaseMappingLock(productMappingId: string, lockValue: string): Promise<void> {
   const lockKey = `lock:product-mapping:${productMappingId}`;
   try {
-    const currentValue = await redisConnection.get(lockKey);
+    const currentValue = await redisConnection?.get(lockKey);
     if (currentValue === lockValue) {
-      await redisConnection.del(lockKey);
+      await redisConnection?.del(lockKey);
     }
   } catch {
     // Non-blocking release fallback
@@ -494,6 +479,7 @@ export async function processSyncJob(job: Job<ISyncJobPayload>) {
       category: product.category,
       images: product.images,
       price: product.price,
+      currency: product.currency || undefined,
       quantity: product.quantity,
       shippingCharge: product.shippingCharge,
       status: product.status,
@@ -584,9 +570,20 @@ export const productSyncWorker = redisConnection
       {
         connection: redisConnection,
         concurrency: env.SYNC_CONCURRENCY || 5,
+        autorun: false,
       }
     )
   : null;
+
+let workerStarted = false;
+export function startProductSyncWorker(): void {
+  if (!productSyncWorker || workerStarted) return;
+  workerStarted = true;
+  void productSyncWorker.run().catch((error) => {
+    workerStarted = false;
+    console.error("Product sync worker stopped unexpectedly:", error);
+  });
+}
 
 // Worker Event Listeners for Error & Failure Tracking
 productSyncWorker?.on("failed", async (job, err) => {

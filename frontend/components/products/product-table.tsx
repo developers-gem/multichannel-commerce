@@ -45,7 +45,7 @@ export default function ProductTable({
         </div>
         <h3 className="text-lg font-bold text-slate-800">No Master Products Found</h3>
         <p className="mt-1 text-sm text-slate-500 max-w-sm">
-          No master catalog products match your criteria or none have been created yet. Click "Add Product" above to create your first product.
+          No master catalog products match your criteria or none have been created yet. Click &quot;Add Product&quot; above to create your first product.
         </p>
       </div>
     );
@@ -115,7 +115,10 @@ export default function ProductTable({
 
                   {/* Price */}
                   <td className="px-6 py-4 font-bold text-slate-900">
-                    ${product.price.toFixed(2)}
+                    {new Intl.NumberFormat(undefined, {
+                      style: "currency",
+                      currency: product.currency || "USD",
+                    }).format(product.price)}
                   </td>
 
                   {/* Quantity */}
@@ -135,7 +138,10 @@ export default function ProductTable({
 
                   {/* Shipping Charge */}
                   <td className="px-6 py-4 text-slate-600 font-mono text-xs">
-                    ${(product.shippingCharge || 0).toFixed(2)}
+                    {new Intl.NumberFormat(undefined, {
+                      style: "currency",
+                      currency: product.currency || "USD",
+                    }).format(product.shippingCharge || 0)}
                   </td>
 
                   {/* Connected Channels Badge */}

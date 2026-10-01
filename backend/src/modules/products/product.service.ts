@@ -173,17 +173,11 @@ class ProductService {
    * Soft Delete Product
    */
   async delete(id: string, options: ProductServiceOptions = {}) {
-    const product = await Product.findOneAndUpdate(
+    const product = await Product.findOne(
       {
         _id: id,
         isDeleted: false,
         ...(options.userId ? { userId: options.userId } : {}),
-      },
-      {
-        isDeleted: true,
-      },
-      {
-        new: true,
       }
     );
 
@@ -197,6 +191,8 @@ class ProductService {
     if (!options.skipSync) {
       await syncService.enqueueSyncJobsForProduct(product._id.toString(), SyncJobAction.DELETE, options.userId);
     }
+
+    await Product.findByIdAndUpdate(product._id, { isDeleted: true });
 
     return;
   }

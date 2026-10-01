@@ -17,7 +17,7 @@ export const env = {
   REDIS_PORT: Number(process.env.REDIS_PORT) || 6379,
   REDIS_PASSWORD: process.env.REDIS_PASSWORD || "",
   REDIS_DB: Number(process.env.REDIS_DB) || 0,
-  REDIS_ENABLED: process.env.REDIS_ENABLED === "true" || !!(process.env.REDIS_URL || process.env.REDIS_HOST || process.env.REDIS_PORT),
+  REDIS_ENABLED: process.env.REDIS_ENABLED === "true" || Boolean(process.env.REDIS_URL),
 
   SYNC_CONCURRENCY: Number(process.env.SYNC_CONCURRENCY) || 5,
   SYNC_MAX_RETRIES: Number(process.env.SYNC_MAX_RETRIES) || 3,
@@ -29,11 +29,26 @@ export const env = {
   SHOPIFY_CLIENT_SECRET: process.env.SHOPIFY_CLIENT_SECRET || "",
   SHOPIFY_REDIRECT_URI: process.env.SHOPIFY_REDIRECT_URI || "http://localhost:5000/api/integrations/shopify/callback",
 
-  // Minimal eBay OAuth config
-  EBAY_CLIENT_ID: process.env.EBAY_CLIENT_ID || "",
-  EBAY_CLIENT_SECRET: process.env.EBAY_CLIENT_SECRET || "",
-  EBAY_RU_NAME: process.env.EBAY_RU_NAME || "",
+  // eBay environment-specific OAuth config. Legacy generic EBAY_* variables
+  // remain the Sandbox fallback only; never use Sandbox credentials in Production.
   EBAY_ENVIRONMENT: (process.env.EBAY_ENVIRONMENT || "sandbox") as "sandbox" | "production",
+  EBAY_SANDBOX_CLIENT_ID: process.env.EBAY_SANDBOX_CLIENT_ID || process.env.EBAY_CLIENT_ID || "",
+  EBAY_SANDBOX_CLIENT_SECRET: process.env.EBAY_SANDBOX_CLIENT_SECRET || process.env.EBAY_CLIENT_SECRET || "",
+  EBAY_SANDBOX_RU_NAME: process.env.EBAY_SANDBOX_RU_NAME || process.env.EBAY_RU_NAME || "",
+  EBAY_PRODUCTION_CLIENT_ID: process.env.EBAY_PRODUCTION_CLIENT_ID || "",
+  EBAY_PRODUCTION_CLIENT_SECRET: process.env.EBAY_PRODUCTION_CLIENT_SECRET || "",
+  EBAY_PRODUCTION_RU_NAME: process.env.EBAY_PRODUCTION_RU_NAME || "",
+  EBAY_CLIENT_ID: process.env.EBAY_ENVIRONMENT === "production"
+    ? process.env.EBAY_PRODUCTION_CLIENT_ID || ""
+    : process.env.EBAY_SANDBOX_CLIENT_ID || process.env.EBAY_CLIENT_ID || "",
+  EBAY_CLIENT_SECRET: process.env.EBAY_ENVIRONMENT === "production"
+    ? process.env.EBAY_PRODUCTION_CLIENT_SECRET || ""
+    : process.env.EBAY_SANDBOX_CLIENT_SECRET || process.env.EBAY_CLIENT_SECRET || "",
+  EBAY_RU_NAME: process.env.EBAY_ENVIRONMENT === "production"
+    ? process.env.EBAY_PRODUCTION_RU_NAME || ""
+    : process.env.EBAY_SANDBOX_RU_NAME || process.env.EBAY_RU_NAME || "",
+  EBAY_MARKETPLACE_ID: process.env.EBAY_MARKETPLACE_ID || "EBAY_US",
+  EBAY_CURRENCY: process.env.EBAY_CURRENCY || "USD",
 
   FRONTEND_URL: process.env.FRONTEND_URL || "http://localhost:3000",
 };
