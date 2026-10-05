@@ -35,3 +35,22 @@ export function normalizeShopifyDomain(input: string): string {
 
   return clean;
 }
+
+/**
+ * Ensures a Shopify resource ID is formatted as a full Shopify GraphQL GID:
+ * e.g. "7891234560" -> "gid://shopify/Product/7891234560"
+ * e.g. "gid://shopify/Product/7891234560" -> "gid://shopify/Product/7891234560"
+ */
+export function toShopifyGid(
+  resource: "Product" | "ProductVariant" | "InventoryItem",
+  id: string | number | undefined | null
+): string {
+  if (!id) return "";
+  const strId = String(id).trim();
+  if (!strId) return "";
+  if (strId.startsWith("gid://shopify/")) {
+    return strId;
+  }
+  return `gid://shopify/${resource}/${strId}`;
+}
+

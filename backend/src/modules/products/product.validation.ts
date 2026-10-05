@@ -30,6 +30,11 @@ export const createProductSchema = z.object({
     .array(z.string())
     .optional(),
 
+  costPrice: z
+    .number()
+    .min(0, "Cost price cannot be negative")
+    .optional(),
+
   price: z
     .number()
     .min(0, "Price cannot be negative"),
@@ -40,7 +45,12 @@ export const createProductSchema = z.object({
     .number()
     .min(0, "Quantity cannot be negative"),
 
+  inventoryMode: z
+    .enum(["INDEPENDENT", "SHARED"])
+    .optional(),
+
   shippingCharge: z
+
     .number()
     .min(0, "Shipping charge cannot be negative")
     .optional(),
