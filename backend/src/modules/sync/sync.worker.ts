@@ -313,6 +313,7 @@ import { MarketplaceConnectorFactory } from "./connectors/connector.factory";
 import { QUEUE_NAME, redisConnection } from "./sync.queue";
 import { ISyncJobPayload, SyncJobAction, SyncLogStatus } from "./sync.types";
 import { SyncStatus } from "../../shared/enums/sync-status.enum";
+import { resolveChannelPrice, resolveChannelQuantity } from "./channel-values";
 
 const LOCK_TTL_MS = 30000; // 30 seconds safe TTL
 
@@ -478,9 +479,9 @@ export async function processSyncJob(job: Job<ISyncJobPayload>) {
       brand: product.brand,
       category: product.category,
       images: product.images,
-      price: product.price,
-      currency: product.currency || undefined,
-      quantity: product.quantity,
+      price: resolveChannelPrice(mapping.channelPrice, product.price),
+      currency: mapping.channelCurrency || product.currency || undefined,
+      quantity: resolveChannelQuantity(mapping.channelQuantity, product.quantity),
       shippingCharge: product.shippingCharge,
       status: product.status,
       externalProductId: mapping.externalProductId,
@@ -488,7 +489,14 @@ export async function processSyncJob(job: Job<ISyncJobPayload>) {
       externalInventoryItemId: mapping.externalInventoryItemId,
       storeUrl: integration.storeUrl,
       integrationId: integration._id.toString(),
-      credentials: { ...integration.credentials, storeUrl: integration.storeUrl },
+      channelCategoryId: mapping.channelCategoryId || undefined,
+      channelCategoryName: mapping.channelCategoryName || undefined,
+      channelAspects: mapping.channelAspects || undefined,
+      credentials: {
+        ...integration.credentials,
+        storeUrl: integration.storeUrl,
+        ...(mapping.channelCategoryId ? { categoryId: mapping.channelCategoryId } : {}),
+      },
     };
 
     // Step 8: Execute action
@@ -511,10 +519,14 @@ export async function processSyncJob(job: Job<ISyncJobPayload>) {
           status: SyncLogStatus.FAILED,
           completedAt: new Date(),
           error: errorMsg,
+          ...(result.externalProductId ? { externalId: result.externalProductId } : {}),
         });
         await ProductMapping.findByIdAndUpdate(productMappingId, {
           syncStatus: SyncStatus.FAILED,
           lastSyncError: errorMsg,
+          ...(result.categoryId ? { channelCategoryId: result.categoryId } : {}),
+          ...(result.categoryName ? { channelCategoryName: result.categoryName } : {}),
+          ...(result.missingAspects ? { missingAspects: result.missingAspects } : {}),
         });
         throw new UnrecoverableError(errorMsg);
       } else {
@@ -527,6 +539,7 @@ export async function processSyncJob(job: Job<ISyncJobPayload>) {
       status: SyncLogStatus.COMPLETED,
       completedAt: new Date(),
       error: "",
+      ...(result.externalProductId ? { externalId: result.externalProductId } : {}),
     });
 
     const updateMappingData: Record<string, unknown> = {
@@ -552,6 +565,13 @@ export async function processSyncJob(job: Job<ISyncJobPayload>) {
       if (result.externalSku) {
         updateMappingData.externalSku = result.externalSku;
       }
+      if (result.externalInventoryItemId) {
+        updateMappingData.externalInventoryItemId = result.externalInventoryItemId;
+      }
+      if (result.categoryId) updateMappingData.channelCategoryId = result.categoryId;
+      if (result.categoryName) updateMappingData.channelCategoryName = result.categoryName;
+      if (result.aspects) updateMappingData.channelAspects = result.aspects;
+      updateMappingData.missingAspects = [];
     }
 
     await ProductMapping.findByIdAndUpdate(productMappingId, updateMappingData);

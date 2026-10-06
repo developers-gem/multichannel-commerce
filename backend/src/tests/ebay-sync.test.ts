@@ -48,6 +48,7 @@ async function run() {
       accessToken: "expired-token",
       refreshToken: "old-refresh",
       expiresAt: new Date(Date.now() - 1000),
+      marketplaceId: "EBAY_GB",
       currency: "GBP",
     };
     const health = await connector.testConnection(credentials);

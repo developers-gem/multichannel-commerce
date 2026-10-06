@@ -652,6 +652,7 @@ import { Platform } from "../../shared/enums/platform.enum";
 import { env } from "../../config/env";
 import { redisConnection } from "../../config/redis";
 import { normalizeShopifyDomain } from "../../utils/shopify.utils";
+import { planShopifyInventoryWebhook, planShopifyProductWebhook } from "./shopify-webhook.sync";
 
 import { CreateIntegrationDto } from "./integration.types";
 import Product from "../products/product.model";
@@ -672,18 +673,20 @@ class IntegrationService {
     if (!integration) return;
 
     if (topic === "inventory_levels/update") {
-      const inventoryItemId = String(payload.inventory_item_id || "");
-      const quantity = Number(payload.available);
-      if (!inventoryItemId || !Number.isFinite(quantity)) return;
+      const plan = planShopifyInventoryWebhook(payload);
+      if (!plan) return;
 
       const mapping = await ProductMapping.findOne({
         integrationId: integration._id,
-        externalInventoryItemId: inventoryItemId,
+        $or: [
+          { externalInventoryItemId: plan.inventoryItemGid },
+          { externalInventoryItemId: plan.rawInventoryItemId },
+        ],
         isDeleted: false,
       });
       if (mapping) {
-        await Product.findByIdAndUpdate(mapping.productId, { quantity: Math.max(0, quantity) });
         await ProductMapping.findByIdAndUpdate(mapping._id, {
+          channelQuantity: plan.channelQuantity,
           lastSyncedAt: new Date(),
           lastSyncError: "",
         });
@@ -692,62 +695,60 @@ class IntegrationService {
     }
 
     if (topic === "products/update" || topic === "products/create") {
-      const productId = String(payload.id || "");
-      const variant = payload.variants?.[0];
-      if (!productId) return;
+      const plan = planShopifyProductWebhook(payload);
+      if (!plan) return;
 
-      const externalVariantId = variant ? String(variant.id) : "";
-      const sku = variant?.sku || `SKU-SHOPIFY-${productId}`;
+      const rawProductId = String(payload.id || "");
+      const rawVariantId = plan.variantGid ? String((payload.variants || [])[0]?.id || "") : "";
 
       let mapping = await ProductMapping.findOne({
         integrationId: integration._id,
-        externalProductId: productId,
+        $or: [
+          { externalProductId: plan.productGid },
+          { externalProductId: rawProductId },
+          ...(plan.variantGid ? [{ externalVariantId: plan.variantGid }, { externalVariantId: rawVariantId }] : []),
+          { sku: plan.sku },
+        ],
         isDeleted: false,
       });
 
       if (!mapping) {
-        // 1. Create a new master product on your platform if it doesn't exist yet
-        const newProduct = await Product.create({
-          userId: integration.userId,
-          title: payload.title || "Untitled Shopify Product",
-          description: payload.body_html || "",
-          sku: sku,
-          price: Math.max(0, Number(variant?.price) || 0),
-          quantity: Math.max(0, Number(variant?.inventory_quantity) || 0),
-          brand: payload.vendor || "",
-          category: payload.product_type || "",
-          images: (payload.images || []).map((image: any) => image.src).filter(Boolean),
+        let masterProduct = await Product.findOne({
+          sku: plan.sku,
+          isDeleted: false,
         });
 
-        // 2. Create the ProductMapping to link Shopify with your master product
-        await ProductMapping.create({
-          userId: integration.userId,
-          productId: newProduct._id,
+        if (!masterProduct) {
+          masterProduct = await Product.create({
+            userId: integration.userId,
+            sku: plan.sku,
+            ...plan.masterDefaults,
+          });
+        } else if (Object.keys(plan.masterCatalog).length > 0) {
+          await Product.findByIdAndUpdate(masterProduct._id, plan.masterCatalog, { runValidators: true });
+        }
+
+        mapping = await ProductMapping.create({
+          productId: masterProduct._id,
           integrationId: integration._id,
-          sku: newProduct.sku,
-          externalProductId: productId,
-          externalVariantId: externalVariantId,
-          externalSku: sku,
-          syncStatus: "synced",
-          isActive: true,
-          isDeleted: false,
+          ...plan.mapping,
+          sku: masterProduct.sku,
           lastSyncedAt: new Date(),
         });
       } else {
-        // Update existing product if mapping is found
-        await Product.findByIdAndUpdate(mapping.productId, {
-          title: payload.title || undefined,
-          description: payload.body_html || "",
-          brand: payload.vendor || "",
-          category: payload.product_type || "",
-          images: (payload.images || []).map((image: any) => image.src).filter(Boolean),
-          price: Math.max(0, Number(variant?.price) || 0),
-          quantity: Math.max(0, Number(variant?.inventory_quantity) || 0),
-        }, { runValidators: true });
+        if (Object.keys(plan.masterCatalog).length > 0) {
+          await Product.findByIdAndUpdate(mapping.productId, plan.masterCatalog, { runValidators: true });
+        }
 
-        await ProductMapping.findByIdAndUpdate(mapping._id, { 
-          lastSyncedAt: new Date(), 
-          lastSyncError: "" 
+        await ProductMapping.findByIdAndUpdate(mapping._id, {
+          externalProductId: plan.mapping.externalProductId,
+          ...(plan.mapping.externalVariantId ? { externalVariantId: plan.mapping.externalVariantId } : {}),
+          ...(plan.mapping.externalInventoryItemId ? { externalInventoryItemId: plan.mapping.externalInventoryItemId } : {}),
+          ...(plan.mapping.channelPrice !== undefined ? { channelPrice: plan.mapping.channelPrice } : {}),
+          ...(plan.mapping.channelQuantity !== undefined ? { channelQuantity: plan.mapping.channelQuantity } : {}),
+          lastSyncedAt: new Date(),
+          lastSyncError: "",
+          syncStatus: "SYNCED",
         });
       }
     }
@@ -1262,6 +1263,7 @@ class IntegrationService {
       accessToken,
       marketplaceId: env.EBAY_MARKETPLACE_ID || "EBAY_US",
       currency: env.EBAY_CURRENCY || "USD",
+      ...(env.EBAY_CATEGORY_ID ? { categoryId: env.EBAY_CATEGORY_ID } : {}),
       environment: isSandbox ? "sandbox" : "production",
     };
 
@@ -1337,6 +1339,52 @@ class IntegrationService {
       .catch((error: unknown) => console.error(`[eBay] Initial catalog sync failed for integration ${integrationId}:`, error instanceof Error ? error.message : "unknown error"));
 
     return `${env.FRONTEND_URL}/integrations?ebay_success=true&ebay_sync=started&ebay_setup=${setupStatus}`;
+  }
+
+  /**
+   * Category suggestions for the signed-in merchant's eBay integration.
+   * Tokens stay on the server.
+   */
+  async suggestEbayCategories(userId: string, query: string, integrationId?: string) {
+    const q = String(query || "").trim();
+    if (!q) throw new ApiError(HTTP_STATUS.BAD_REQUEST, "Category search query is required");
+    if (q.length > 100) throw new ApiError(HTTP_STATUS.BAD_REQUEST, "Category search query is too long");
+    if (integrationId && !/^[0-9a-fA-F]{24}$/.test(integrationId)) {
+      throw new ApiError(HTTP_STATUS.BAD_REQUEST, "Invalid eBay integration id");
+    }
+
+    const integrations = await Integration.find({
+      userId,
+      platform: Platform.EBAY,
+      isActive: true,
+      ...(integrationId ? { _id: integrationId } : {}),
+    });
+    if (integrations.length === 0) {
+      throw new ApiError(HTTP_STATUS.NOT_FOUND, "Active eBay integration not found");
+    }
+    if (!integrationId && integrations.length > 1) {
+      throw new ApiError(HTTP_STATUS.BAD_REQUEST, "Multiple eBay integrations are connected. Pass integrationId.");
+    }
+
+    const integration = integrations[0];
+    try {
+      const result = await new EbayConnector().getCategorySuggestions(
+        integration.credentials,
+        String(integration._id),
+        q
+      );
+      return {
+        integrationId: String(integration._id),
+        marketplaceId: result.marketplaceId,
+        categoryTreeId: result.categoryTreeId,
+        suggestions: result.suggestions,
+      };
+    } catch (error: any) {
+      throw new ApiError(
+        HTTP_STATUS.SERVICE_UNAVAILABLE,
+        error?.message || "eBay category suggestion failed"
+      );
+    }
   }
 }
 

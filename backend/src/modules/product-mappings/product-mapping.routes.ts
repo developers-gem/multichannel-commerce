@@ -2,6 +2,7 @@ import { Router } from "express";
 import { authenticate } from "../../middlewares/auth.middleware";
 import {
   createProductMapping,
+  listChannelListings,
   getAllProductMappings,
   getProductMappingById,
   updateProductMapping,
@@ -28,6 +29,12 @@ router.get(
   "/",
   authenticate,
   getAllProductMappings
+);
+
+router.get(
+  "/channel-listings",
+  authenticate,
+  listChannelListings
 );
 
 router.get(

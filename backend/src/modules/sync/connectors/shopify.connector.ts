@@ -465,12 +465,6 @@ export class ShopifyConnector implements IMarketplaceConnector, IChannelImportCo
         vendor: payload.brand || "",
         productType: payload.category || "",
         status: this.mapStatus(payload.status as string),
-        variants: [
-          {
-            price: String(payload.price),
-            sku: payload.sku,
-          },
-        ],
       },
       media: (payload.images || []).map((url) => ({
         mediaContentType: "IMAGE",
@@ -496,25 +490,61 @@ export class ShopifyConnector implements IMarketplaceConnector, IChannelImportCo
       };
     }
 
+    const bulkVariantQuery = `
+      mutation productVariantsBulkUpdate($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
+        productVariantsBulkUpdate(productId: $productId, variants: $variants) {
+          productVariants {
+            id
+            price
+            sku
+            inventoryItem {
+              id
+            }
+          }
+          userErrors {
+            field
+            message
+          }
+        }
+      }
+    `;
+    const variantData = await this.executeGraphQL(
+      storeUrl,
+      credentials,
+      bulkVariantQuery,
+      {
+        productId: createdProduct.id,
+        variants: [{ id: variantNode.id, price: String(payload.price), sku: payload.sku }],
+      },
+      payload.integrationId
+    );
+    const bulkResult = variantData?.productVariantsBulkUpdate;
+    if (bulkResult?.userErrors && bulkResult.userErrors.length > 0) {
+      const errMsg = bulkResult.userErrors.map((e: any) => e.message).join("; ");
+      return { success: false, error: `Shopify Variant Price Error: ${errMsg}` };
+    }
+
+    const inventoryItemId =
+      bulkResult?.productVariants?.[0]?.inventoryItem?.id || variantNode.inventoryItem?.id;
     const locationId = await this.resolveLocationId(storeUrl, credentials, payload.integrationId);
-    if (!locationId || !variantNode.inventoryItem?.id) {
+    if (!locationId || !inventoryItemId) {
       return { success: false, error: "Shopify inventory location or inventory item is unavailable" };
     }
-    if (locationId && variantNode.inventoryItem?.id) {
-      await this.setInventoryQuantity(
-        storeUrl,
-        credentials,
-        variantNode.inventoryItem.id,
-        locationId,
-        payload.quantity,
-        payload.integrationId
-      );
-    }
+    await this.setInventoryQuantity(
+      storeUrl,
+      credentials,
+      inventoryItemId,
+      locationId,
+      payload.quantity,
+      payload.integrationId
+    );
 
     return {
       success: true,
       externalProductId: createdProduct.id,
       externalVariantId: variantNode.id,
+      externalInventoryItemId: inventoryItemId,
+      externalSku: payload.sku,
     };
   }
 
@@ -587,6 +617,7 @@ export class ShopifyConnector implements IMarketplaceConnector, IChannelImportCo
     const product = productResult?.product;
     const variantNode = product?.variants?.nodes?.[0];
     const targetVariantId = payload.externalVariantId || variantNode?.id;
+    let inventoryItemId = payload.externalInventoryItemId;
 
     if (targetVariantId) {
       const bulkVariantQuery = `
@@ -628,7 +659,7 @@ export class ShopifyConnector implements IMarketplaceConnector, IChannelImportCo
       }
 
       const updatedVariant = bulkResult?.productVariants?.[0];
-      const inventoryItemId = updatedVariant?.inventoryItem?.id || variantNode?.inventoryItem?.id;
+      inventoryItemId = updatedVariant?.inventoryItem?.id || variantNode?.inventoryItem?.id || inventoryItemId;
 
       const locationId = await this.resolveLocationId(storeUrl, credentials, payload.integrationId);
 
@@ -651,6 +682,7 @@ export class ShopifyConnector implements IMarketplaceConnector, IChannelImportCo
       success: true,
       externalProductId: payload.externalProductId,
       externalVariantId: targetVariantId || payload.externalVariantId,
+      externalInventoryItemId: inventoryItemId,
     };
   }
 
@@ -842,6 +874,9 @@ export class ShopifyConnector implements IMarketplaceConnector, IChannelImportCo
 
     const query = `
       query fetchShopifyProducts($first: Int!, $after: String) {
+        shop {
+          currencyCode
+        }
         products(first: $first, after: $after) {
           pageInfo {
             hasNextPage
@@ -881,6 +916,7 @@ export class ShopifyConnector implements IMarketplaceConnector, IChannelImportCo
     }
 
     const data = await this.executeGraphQL(resolvedStoreUrl, credentials, query, variables, integrationId);
+    const shopCurrency = String(data?.shop?.currencyCode || "").trim().toUpperCase();
     const productsConnection = data?.products;
     const pageInfo = productsConnection?.pageInfo;
     const productNodes = productsConnection?.nodes || [];
@@ -906,6 +942,7 @@ export class ShopifyConnector implements IMarketplaceConnector, IChannelImportCo
           category: prod.productType || "",
           images,
           price: Number(variant.price) || 0,
+          currency: shopCurrency || undefined,
           quantity: Number(variant.inventoryQuantity) || 0,
           shippingCharge: 0,
           status: prod.status || "ACTIVE",

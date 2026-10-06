@@ -13,6 +13,7 @@ import { HTTP_STATUS } from "../../shared/constants/http-status.constants";
 import { syncService } from "../sync/sync.service";
 import { SyncJobAction } from "../sync/sync.types";
 import { SyncStatus } from "../../shared/enums/sync-status.enum";
+import { seedChannelListing } from "../sync/channel-values";
 
 export interface ProductServiceOptions {
   skipSync?: boolean;
@@ -200,7 +201,12 @@ class ProductService {
   /**
    * Publish Master Product to selected sales channel integrations
    */
-  async publishToChannels(productId: string, integrationIds: string[], userId?: string) {
+  async publishToChannels(
+    productId: string,
+    integrationIds: string[],
+    userId?: string,
+    channelValues?: Record<string, { channelPrice?: number; channelQuantity?: number; channelCurrency?: string }>
+  ) {
     const product = await Product.findOne({ _id: productId, isDeleted: false, ...(userId ? { userId } : {}) });
     if (!product) {
       throw new ApiError(HTTP_STATUS.NOT_FOUND, "Product not found");
@@ -228,6 +234,16 @@ class ProductService {
         let action = SyncJobAction.CREATE;
 
         if (!mapping) {
+          const requested = channelValues?.[String(integration._id)] || {};
+          const seeded = seedChannelListing({
+            channelPrice: requested.channelPrice,
+            channelQuantity: requested.channelQuantity,
+            channelCurrency: requested.channelCurrency,
+            masterPrice: product.price,
+            masterQuantity: product.quantity,
+            masterCurrency: product.currency,
+            integrationCurrency: integration.credentials?.currency as string | undefined,
+          });
           mapping = await ProductMapping.create({
             productId: product._id,
             integrationId: integration._id,
@@ -235,6 +251,9 @@ class ProductService {
             externalProductId: "",
             externalVariantId: "",
             externalSku: "",
+            channelPrice: seeded.channelPrice,
+            channelQuantity: seeded.channelQuantity,
+            channelCurrency: seeded.channelCurrency,
             syncStatus: SyncStatus.PENDING,
             isActive: true,
             isDeleted: false,
@@ -247,7 +266,7 @@ class ProductService {
           }
         }
 
-        const jobRes = await syncService.enqueueSyncJob(mapping._id.toString(), action);
+        const jobRes = await syncService.enqueueSyncJob(mapping._id.toString(), action, userId);
         results.push({
           integrationId,
           productMappingId: mapping._id,
@@ -255,8 +274,16 @@ class ProductService {
           status: jobRes.status,
         });
       } catch (err: any) {
-        // Skip duplicate active jobs or errors without failing other selected channels
+        results.push({
+          integrationId,
+          status: "FAILED",
+          error: err?.message || "Failed to publish to this channel",
+        });
       }
+    }
+
+    if (results.length > 0 && results.every((result) => result.status === "FAILED")) {
+      throw new ApiError(HTTP_STATUS.BAD_REQUEST, results.map((result) => result.error).filter(Boolean).join("; "));
     }
 
     return results;

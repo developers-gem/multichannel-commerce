@@ -120,9 +120,29 @@ export const syncProductChannels = asyncHandler(
 export const publishProductToChannels = asyncHandler(
   async (req: Request, res: Response) => {
     const productId = String(req.params.id);
-    const { integrationIds } = req.body;
+    const channels = Array.isArray(req.body?.channels) ? req.body.channels : [];
+    const integrationIds = channels.length
+      ? channels.map((channel: { integrationId?: string }) => String(channel.integrationId || "")).filter(Boolean)
+      : req.body?.integrationIds;
+    const channelValues = Object.fromEntries(
+      channels
+        .filter((channel: { integrationId?: string }) => channel?.integrationId)
+        .map((channel: { integrationId: string; channelPrice?: number; channelQuantity?: number; channelCurrency?: string }) => [
+          String(channel.integrationId),
+          {
+            channelPrice: channel.channelPrice,
+            channelQuantity: channel.channelQuantity,
+            channelCurrency: channel.channelCurrency,
+          },
+        ])
+    );
 
-    const results = await productService.publishToChannels(productId, integrationIds, String(req.user?._id));
+    const results = await productService.publishToChannels(
+      productId,
+      integrationIds,
+      String(req.user?._id),
+      channelValues
+    );
 
     return res.status(HTTP_STATUS.ACCEPTED).json(
       new ApiResponse(

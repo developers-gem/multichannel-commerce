@@ -11,6 +11,7 @@ import {
   handleShopifyCallback,
   initiateEbayAuth,
   handleEbayCallback,
+  suggestEbayCategories,
 } from "./integration.controller";
 import { handleShopifyWebhook } from "./shopify-webhook.controller";
 
@@ -28,6 +29,7 @@ router.get("/shopify/callback", handleShopifyCallback);
 // eBay OAuth Routes
 router.get("/ebay/authorize", authenticate, initiateEbayAuth);
 router.get("/ebay/callback", handleEbayCallback);
+router.get("/ebay/categories/suggestions", authenticate, suggestEbayCategories);
 
 
 router.post(

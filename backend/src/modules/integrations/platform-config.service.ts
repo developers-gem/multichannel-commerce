@@ -2,6 +2,11 @@ import { PlatformConfig } from "./platform-config.model";
 import { Platform } from "../../shared/enums/platform.enum";
 import Integration from "./integration.model";
 import ProductMapping from "../product-mappings/product-mapping.model";
+import Product from "../products/product.model";
+import {
+  resolveChannelPrice,
+  resolveChannelShippingCost,
+} from "../sync/channel-values";
 
 export interface ResolvedFeeConfig {
   feePercentage: number;
@@ -142,6 +147,28 @@ class PlatformConfigService {
       paymentFeePercentage: 0,
       source: "PLATFORM_DEFAULT",
     };
+  }
+
+  /**
+   * On-demand listing profitability using mapping channelPrice (fallback: master price),
+   * master costPrice, mapping shippingCost (fallback: master shippingCharge), and resolved fees.
+   */
+  async getProfitabilityForMapping(mappingId: string) {
+    const mapping = await ProductMapping.findById(mappingId);
+    if (!mapping || mapping.isDeleted) {
+      return null;
+    }
+
+    const product = await Product.findById(mapping.productId);
+    const sellingPrice = resolveChannelPrice(mapping.channelPrice, product?.price);
+    const costPrice = Math.max(0, Number(product?.costPrice) || 0);
+    const shippingCost = resolveChannelShippingCost(
+      mapping.shippingCost,
+      product?.shippingCharge
+    );
+    const feeConfig = await this.resolveFeeConfig(mappingId);
+
+    return this.calculateProfitability(sellingPrice, costPrice, shippingCost, feeConfig);
   }
 }
 

@@ -155,3 +155,16 @@ export const handleEbayCallback = asyncHandler(
     return res.redirect(redirectUrl);
   }
 );
+
+export const suggestEbayCategories = asyncHandler(
+  async (req: Request, res: Response) => {
+    const userId = String(req.user?._id || "");
+    const query = String(req.query.q || "");
+    const integrationId = req.query.integrationId ? String(req.query.integrationId) : undefined;
+    const result = await integrationService.suggestEbayCategories(userId, query, integrationId);
+
+    return res.status(HTTP_STATUS.OK).json(
+      new ApiResponse(true, "eBay category suggestions fetched", result)
+    );
+  }
+);

@@ -49,6 +49,7 @@ export const env = {
     : process.env.EBAY_SANDBOX_RU_NAME || process.env.EBAY_RU_NAME || "",
   EBAY_MARKETPLACE_ID: process.env.EBAY_MARKETPLACE_ID || "EBAY_US",
   EBAY_CURRENCY: process.env.EBAY_CURRENCY || "USD",
+  EBAY_CATEGORY_ID: process.env.EBAY_CATEGORY_ID || "",
 
   FRONTEND_URL: process.env.FRONTEND_URL || "http://localhost:3000",
 };

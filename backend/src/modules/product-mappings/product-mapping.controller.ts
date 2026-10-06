@@ -3,6 +3,7 @@ import { Request, Response } from "express";
 import { productMappingService } from "./product-mapping.service";
 import { asyncHandler } from "../../utils/asyncHandler";
 import { ApiResponse } from "../../utils/ApiResponse";
+import { ApiError } from "../../utils/ApiError";
 import { HTTP_STATUS } from "../../shared/constants/http-status.constants";
 
 export const createProductMapping = asyncHandler(
@@ -15,6 +16,19 @@ export const createProductMapping = asyncHandler(
         "Product mapping created successfully",
         mapping
       )
+    );
+  }
+);
+
+export const listChannelListings = asyncHandler(
+  async (req: Request, res: Response) => {
+    const integrationId = String(req.query.integrationId || "");
+    if (!/^[0-9a-fA-F]{24}$/.test(integrationId)) {
+      throw new ApiError(HTTP_STATUS.BAD_REQUEST, "integrationId is required");
+    }
+    const listings = await productMappingService.listChannelListings(integrationId, String(req.user?._id));
+    return res.status(HTTP_STATUS.OK).json(
+      new ApiResponse(true, "Channel listings fetched successfully", listings)
     );
   }
 );
