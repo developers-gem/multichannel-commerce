@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   createProduct,
   deleteProduct,
+  getProductById,
   getProducts,
   publishProductToChannels,
   syncProductChannels,
@@ -13,6 +14,14 @@ export function useProducts(page: number = 1, limit: number = 20, search: string
   return useQuery({
     queryKey: ["products", page, limit, search],
     queryFn: () => getProducts(page, limit, search),
+  });
+}
+
+export function useProduct(id: string) {
+  return useQuery({
+    queryKey: ["products", id],
+    queryFn: () => getProductById(id),
+    enabled: Boolean(id),
   });
 }
 
@@ -73,8 +82,20 @@ export function usePublishProductToChannels() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({ id, integrationIds }: { id: string; integrationIds: string[] }) =>
-      publishProductToChannels(id, integrationIds),
+    mutationFn: ({
+      id,
+      integrationIds = [],
+      channels,
+    }: {
+      id: string;
+      integrationIds?: string[];
+      channels?: Array<{
+        integrationId: string;
+        channelPrice?: number;
+        channelQuantity?: number;
+        channelCurrency?: string;
+      }>;
+    }) => publishProductToChannels(id, integrationIds, channels),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["products"] });
       queryClient.invalidateQueries({ queryKey: ["product-mappings"] });

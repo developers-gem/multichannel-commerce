@@ -11,11 +11,11 @@ import {
 } from "lucide-react";
 
 export const sidebarItems = [
-  // {
-  //   title: "Dashboard",
-  //   href: "/dashboard",
-  //   icon: LayoutDashboard,
-  // },
+  {
+    title: "Dashboard",
+    href: "/dashboard",
+    icon: LayoutDashboard,
+  },
   {
     title: "Sync Operations",
     href: "/sync-dashboard",
@@ -32,7 +32,7 @@ export const sidebarItems = [
     icon: Package,
   },
   {
-    title: "Product Mappings",
+    title: "Channel Mappings",
     href: "/product-mappings",
     icon: GitCompare,
   },

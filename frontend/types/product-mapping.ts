@@ -9,7 +9,14 @@ export interface ProductMapping {
   sku: string;
   externalProductId: string;
   externalVariantId?: string;
+  externalInventoryItemId?: string;
   externalSku?: string;
+  channelPrice?: number;
+  channelQuantity?: number;
+  channelCurrency?: string;
+  channelCategoryId?: string;
+  channelCategoryName?: string;
+  missingAspects?: string[];
   syncStatus: SyncStatus;
   lastSyncedAt?: string;
   lastSyncError?: string;
@@ -22,18 +29,50 @@ export interface ProductMapping {
 export type SingleProductMappingResponse = ApiResponse<ProductMapping>;
 export type ProductMappingsListResponse = ApiResponse<ProductMapping[]>;
 
+export interface ChannelListing {
+  externalProductId: string;
+  externalVariantId?: string;
+  externalInventoryItemId?: string;
+  externalSku?: string;
+  title: string;
+  channelPrice?: number;
+  channelQuantity?: number;
+  channelCurrency?: string;
+  channelCategoryId?: string;
+  channelCategoryName?: string;
+}
+
+export interface ChannelListingsResult {
+  listings: ChannelListing[];
+  message?: string;
+}
+
+export type ChannelListingsResponse = ApiResponse<ChannelListingsResult>;
+
 export interface CreateProductMappingInput {
   productId: string;
   integrationId: string;
-  externalProductId: string;
+  externalProductId?: string;
   externalVariantId?: string;
+  externalInventoryItemId?: string;
   externalSku?: string;
+  channelPrice?: number;
+  channelQuantity?: number;
+  channelCurrency?: string;
+  channelCategoryId?: string;
+  channelCategoryName?: string;
   isActive?: boolean;
 }
 
 export interface UpdateProductMappingInput {
   externalProductId?: string;
   externalVariantId?: string;
+  externalInventoryItemId?: string;
   externalSku?: string;
+  channelPrice?: number;
+  channelQuantity?: number;
+  channelCurrency?: string;
+  channelCategoryId?: string;
+  channelCategoryName?: string;
   isActive?: boolean;
 }

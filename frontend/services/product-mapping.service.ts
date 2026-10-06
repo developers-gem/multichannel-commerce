@@ -1,4 +1,5 @@
 import {
+  ChannelListingsResponse,
   CreateProductMappingInput,
   ProductMapping,
   ProductMappingsListResponse,
@@ -54,6 +55,24 @@ export async function getProductMappingById(
   return data;
 }
 
+export async function getChannelListings(integrationId: string): Promise<ChannelListingsResponse> {
+  const response = await fetch(
+    `${API_URL}/api/product-mappings/channel-listings?integrationId=${encodeURIComponent(integrationId)}`,
+    { headers: getAuthHeaders() }
+  );
+
+  if (response.status === 401) {
+    handleUnauthorized();
+    throw new Error("Unauthorized: Session expired");
+  }
+
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.message || "Failed to load channel listings");
+  }
+  return data;
+}
+
 export async function createProductMapping(
   payload: CreateProductMappingInput
 ): Promise<SingleProductMappingResponse> {
@@ -71,7 +90,8 @@ export async function createProductMapping(
   const data = await response.json();
 
   if (!response.ok) {
-    throw new Error(data.message || "Failed to create product mapping");
+    const detail = Array.isArray(data.errors) ? data.errors[0]?.message : "";
+    throw new Error(detail ? `${data.message}: ${detail}` : data.message || "Failed to create product mapping");
   }
 
   return data;

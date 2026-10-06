@@ -169,6 +169,39 @@ export async function initiateShopifyAuthorize(
 }
 
 
+export interface EbayCategorySuggestion {
+  categoryId: string;
+  categoryName: string;
+  categoryPath: string;
+  leafCategory: boolean;
+}
+
+export async function suggestEbayCategories(
+  query: string,
+  integrationId?: string
+): Promise<ApiResponse<{ suggestions: EbayCategorySuggestion[] }>> {
+  const params = new URLSearchParams({ q: query });
+  if (integrationId) params.set("integrationId", integrationId);
+
+  const response = await fetch(
+    `${API_URL}/api/integrations/ebay/categories/suggestions?${params.toString()}`,
+    { headers: getAuthHeaders() }
+  );
+
+  if (response.status === 401) {
+    handleUnauthorized();
+    throw new Error("Unauthorized: Session expired");
+  }
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw new Error(data.message || "Failed to fetch eBay category suggestions");
+  }
+
+  return data;
+}
+
 export async function initiateEbayAuthorize(): Promise<
   ApiResponse<{ authUrl: string }>
 > {

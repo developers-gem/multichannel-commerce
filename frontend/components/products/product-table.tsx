@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { Edit2, Trash2, Package, Image as ImageIcon, ChevronLeft, ChevronRight, Layers, RefreshCw, Send } from "lucide-react";
 import { Product, ProductsPagination } from "@/types/product";
 import { Button } from "@/components/ui/button";
@@ -102,7 +103,9 @@ export default function ProductTable({
 
                   {/* Title */}
                   <td className="px-6 py-4">
-                    <div className="font-semibold text-slate-900">{product.title}</div>
+                    <Link href={`/products/${product._id}`} className="font-semibold text-slate-900 hover:text-indigo-700">
+                      {product.title}
+                    </Link>
                     {product.brand && (
                       <div className="text-xs text-slate-400">{product.brand}</div>
                     )}

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Plus, Search } from "lucide-react";
+import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,6 +11,7 @@ import { useProductMappings } from "@/hooks/use-product-mappings";
 import ProductMappingTable from "@/components/product-mappings/product-mapping-table";
 import ProductMappingFormModal from "@/components/product-mappings/product-mapping-form-modal";
 import ProductMappingDeleteDialog from "@/components/product-mappings/product-mapping-delete-dialog";
+import { enqueueSync } from "@/services/sync.service";
 
 export default function ProductMappingsPage() {
   const [search, setSearch] = useState("");
@@ -34,6 +36,15 @@ export default function ProductMappingsPage() {
   const handleOpenEditModal = (mapping: ProductMapping) => {
     setSelectedMapping(mapping);
     setIsFormModalOpen(true);
+  };
+
+  const handleSync = async (mapping: ProductMapping) => {
+    try {
+      await enqueueSync(mapping._id, mapping.externalProductId ? "UPDATE" : "CREATE");
+      toast.success(`Sync queued for ${mapping.sku}`);
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Failed to enqueue sync job");
+    }
   };
 
   const handleOpenDeleteModal = (mapping: ProductMapping) => {
@@ -70,16 +81,16 @@ export default function ProductMappingsPage() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold text-slate-900">
-            Product Mappings
+            Channel Mappings
           </h1>
           <p className="mt-1 text-slate-500">
-            Connect master product catalog SKUs to external marketplace channel listings
+            Overview of connections between master products and existing channel listings. Connect or publish from a master product.
           </p>
         </div>
 
         <Button onClick={handleOpenAddModal} className="shrink-0">
           <Plus className="mr-2 h-4 w-4" />
-          Add Mapping
+          Connect Existing Listing
         </Button>
       </div>
 
@@ -110,6 +121,7 @@ export default function ProductMappingsPage() {
         isLoading={isLoading}
         onEdit={handleOpenEditModal}
         onDelete={handleOpenDeleteModal}
+        onSync={handleSync}
       />
 
       {/* Add / Edit Modal */}

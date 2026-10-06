@@ -1,5 +1,6 @@
 const configuredApiUrl = process.env.NEXT_PUBLIC_API_URL?.trim();
 
-// Vercel builds must never fall back to localhost. Local development still
-// uses frontend/.env with NEXT_PUBLIC_API_URL=http://localhost:5000.
+// Local `next dev` sets NEXT_PUBLIC_API_URL in .env.development.local.
+// Production builds use .env.local or the host environment. An unset value
+// stays on the Render API so a Vercel build never falls back to localhost.
 export const API_URL = configuredApiUrl || "https://multichannel-commerce-hoee.onrender.com";
