@@ -384,18 +384,17 @@ export class ShopifyConnector implements IMarketplaceConnector, IChannelImportCo
     }
 
     const query = `
-      query getLocations {
-        locations(first: 250, includeAppLocations: false) {
-          nodes {
-            id
-            name
-            isPrimary
-            isActive
-          }
-        }
+  query getLocations {
+    locations(first: 250) {
+      nodes {
+        id
+        name
+        isPrimary
+        isActive
       }
-    `;
-
+    }
+  }
+`;
     try {
       const data = await this.executeGraphQL(storeUrl, credentials, query, {}, integrationId);
       const locations = data?.locations?.nodes || [];
