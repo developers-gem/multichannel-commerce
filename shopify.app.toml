@@ -17,7 +17,7 @@ topics = [
 ]
 
 [access_scopes]
-scopes = "read_products,write_products,read_inventory,write_inventory"
+scopes = "write_inventory,read_inventory,read_locations,read_products,write_products"
 optional_scopes = [ ]
 
 [auth]
