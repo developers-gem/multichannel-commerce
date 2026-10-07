@@ -1,6 +1,6 @@
 # Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
 
-client_id = "c4e9967c0db6a4bcddb5042152f644d1"
+client_id = "f91232479098618d2b2d1f22a6bf00a9"
 name = "MultiChannel Commerce"
 application_url = "https://multichannel-commerce-hoee.onrender.com"
 embedded = false

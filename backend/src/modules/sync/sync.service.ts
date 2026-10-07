@@ -11,8 +11,102 @@ import { ApiError } from "../../utils/ApiError";
 import { HTTP_STATUS } from "../../shared/constants/http-status.constants";
 import { SYNC_MESSAGES } from "./sync.messages";
 import { env } from "../../config/env";
+import { MarketplaceConnectorFactory } from "./connectors/connector.factory";
 
 class SyncService {
+  private async executeDirectMarketplaceSync(
+    syncLogId: string,
+    productId: string,
+    productMappingId: string,
+    integrationId: string,
+    action: SyncJobAction
+  ) {
+    const mapping = await ProductMapping.findOne({ _id: productMappingId, isDeleted: false });
+    const product = await Product.findOne({
+      _id: productId,
+      ...(action === SyncJobAction.DELETE ? {} : { isDeleted: false }),
+    });
+    const integration = await Integration.findOne({ _id: integrationId });
+
+    if (!mapping || !product || !integration || !integration.isActive) {
+      await SyncLog.findByIdAndUpdate(syncLogId, {
+        status: SyncLogStatus.FAILED,
+        completedAt: new Date(),
+        error: "Direct sync could not resolve product, mapping, or active integration",
+      });
+      return { success: false, error: "Direct sync could not resolve product, mapping, or active integration" };
+    }
+
+    const connector = MarketplaceConnectorFactory.getConnector(integration.platform);
+    const syncPayload = {
+      sku: product.sku,
+      title: product.title,
+      description: product.description,
+      brand: product.brand,
+      category: product.category,
+      images: product.images,
+      price: product.price,
+      currency: product.currency || undefined,
+      quantity: product.quantity,
+      shippingCharge: product.shippingCharge,
+      status: product.status,
+      externalProductId: mapping.externalProductId,
+      externalVariantId: mapping.externalVariantId,
+      externalInventoryItemId: mapping.externalInventoryItemId,
+      storeUrl: integration.storeUrl,
+      integrationId: integration._id.toString(),
+      credentials: { ...integration.credentials, storeUrl: integration.storeUrl },
+    };
+
+    let result;
+    if (action === SyncJobAction.CREATE) {
+      result = await connector.createProduct(syncPayload);
+    } else if (action === SyncJobAction.DELETE) {
+      result = await connector.deleteProduct(syncPayload);
+    } else {
+      result = await connector.updateProduct(syncPayload);
+    }
+
+    if (!result?.success) {
+      await SyncLog.findByIdAndUpdate(syncLogId, {
+        status: SyncLogStatus.FAILED,
+        completedAt: new Date(),
+        error: result?.error || "Marketplace sync failed",
+      });
+      await ProductMapping.findByIdAndUpdate(productMappingId, {
+        syncStatus: SyncStatus.FAILED,
+        lastSyncError: result?.error || "Marketplace sync failed",
+      });
+      return result;
+    }
+
+    const updateMappingData: Record<string, unknown> = {
+      lastSyncedAt: new Date(),
+      lastSyncError: "",
+    };
+
+    if (action === SyncJobAction.DELETE) {
+      updateMappingData.syncStatus = SyncStatus.UNPUBLISHED;
+      updateMappingData.externalProductId = "";
+      updateMappingData.externalVariantId = "";
+      updateMappingData.isActive = false;
+    } else {
+      updateMappingData.syncStatus = SyncStatus.SYNCED;
+      updateMappingData.isActive = true;
+      if (result.externalProductId) updateMappingData.externalProductId = result.externalProductId;
+      if (result.externalVariantId) updateMappingData.externalVariantId = result.externalVariantId;
+      if (result.externalSku) updateMappingData.externalSku = result.externalSku;
+    }
+
+    await ProductMapping.findByIdAndUpdate(productMappingId, updateMappingData);
+    await SyncLog.findByIdAndUpdate(syncLogId, {
+      status: SyncLogStatus.COMPLETED,
+      completedAt: new Date(),
+      error: "",
+    });
+
+    return result;
+  }
   /**
    * Enqueue a Sync Job for a given ProductMapping and Action
    */
@@ -81,10 +175,31 @@ class SyncService {
       action,
     };
 
-    // 6. Push job to BullMQ queue
+    // 6. Push job to BullMQ queue or fall back to direct execution when Redis is unavailable
     if (!productSyncQueue) {
-      await SyncLog.findByIdAndUpdate(syncLog._id, { status: SyncLogStatus.FAILED, completedAt: new Date(), error: "Sync queue is unavailable" });
-      throw new ApiError(HTTP_STATUS.SERVICE_UNAVAILABLE, "Sync queue is unavailable. Configure Redis and run the worker.");
+      const result = await this.executeDirectMarketplaceSync(
+        syncLog._id.toString(),
+        product._id.toString(),
+        mapping._id.toString(),
+        integration._id.toString(),
+        action
+      );
+
+      if (!result?.success) {
+        return {
+          syncLogId: syncLog._id,
+          jobId: `direct-sync:${syncLog._id}`,
+          status: SyncLogStatus.FAILED,
+          directFallback: true,
+        };
+      }
+
+      return {
+        syncLogId: syncLog._id,
+        jobId: `direct-sync:${syncLog._id}`,
+        status: SyncLogStatus.COMPLETED,
+        directFallback: true,
+      };
     }
 
     try {

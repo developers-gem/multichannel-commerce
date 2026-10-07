@@ -3,7 +3,10 @@ import { asyncHandler } from "../../utils/asyncHandler";
 import { integrationService } from "./integration.service";
 
 export const handleShopifyWebhook = asyncHandler(async (req: Request, res: Response) => {
-  const rawBody = Buffer.isBuffer(req.body) ? req.body : Buffer.from(JSON.stringify(req.body || {}));
+  const rawBody = Buffer.isBuffer(req.body)
+    ? req.body
+    : Buffer.from(typeof req.body === "string" ? req.body : JSON.stringify(req.body || {}));
+
   const signature = String(req.header("x-shopify-hmac-sha256") || "");
 
   if (!signature || !integrationService.verifyShopifyWebhook(rawBody, signature)) {
@@ -12,7 +15,15 @@ export const handleShopifyWebhook = asyncHandler(async (req: Request, res: Respo
 
   const topic = String(req.header("x-shopify-topic") || "");
   const shop = String(req.header("x-shopify-shop-domain") || "");
-  await integrationService.handleShopifyWebhook(topic, shop, JSON.parse(rawBody.toString("utf8")));
+
+  let payload: Record<string, any> = {};
+  try {
+    payload = rawBody.length > 0 ? JSON.parse(rawBody.toString("utf8")) : {};
+  } catch {
+    payload = (req.body && typeof req.body === "object" ? req.body : {}) as Record<string, any>;
+  }
+
+  await integrationService.handleShopifyWebhook(topic, shop, payload);
 
   return res.sendStatus(200);
 });
