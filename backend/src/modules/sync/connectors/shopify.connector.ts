@@ -461,7 +461,7 @@ export class ShopifyConnector implements IMarketplaceConnector, IChannelImportCo
     const variables = {
       input: {
         title: payload.title,
-        bodyHtml: payload.description || "",
+        descriptionHtml: payload.description || "",
         vendor: payload.brand || "",
         productType: payload.category || "",
         status: this.mapStatus(payload.status as string),
@@ -595,16 +595,16 @@ export class ShopifyConnector implements IMarketplaceConnector, IChannelImportCo
       }
     `;
 
-    const productVariables = {
-      input: {
-        id: payload.externalProductId,
-        title: payload.title,
-        bodyHtml: payload.description || "",
-        vendor: payload.brand || "",
-        productType: payload.category || "",
-        status: this.mapStatus(payload.status as string),
-      },
-    };
+ const productVariables = {
+  input: {
+    id: payload.externalProductId,
+    title: payload.title,
+    descriptionHtml: payload.description || "",
+    vendor: payload.brand || "",
+    productType: payload.category || "",
+    status: this.mapStatus(payload.status as string),
+  },
+};
 
     const data = await this.executeGraphQL(storeUrl, credentials, productQuery, productVariables, payload.integrationId);
     const productResult = data?.productUpdate;
