@@ -36,7 +36,7 @@ export class ShopifyConnector implements IMarketplaceConnector, IChannelImportCo
         if (res === "OK") return true;
         if (res === null) return false;
       }
-    } catch (_) {}
+    } catch (_) { }
 
     // In-memory fallback if Redis connection is not ready/available
     if (ShopifyConnector.inMemoryLocks.has(lockKey)) {
@@ -59,7 +59,7 @@ export class ShopifyConnector implements IMarketplaceConnector, IChannelImportCo
           await redisConnection.del(lockKey);
         }
       }
-    } catch (_) {}
+    } catch (_) { }
 
     if (ShopifyConnector.inMemoryLocks.get(lockKey) === lockValue) {
       ShopifyConnector.inMemoryLocks.delete(lockKey);
@@ -294,7 +294,7 @@ export class ShopifyConnector implements IMarketplaceConnector, IChannelImportCo
           if (retryRes.data?.data) {
             return retryRes.data.data;
           }
-        } catch (_) {}
+        } catch (_) { }
       }
 
       if (error.response?.status === 429) {
@@ -594,16 +594,16 @@ export class ShopifyConnector implements IMarketplaceConnector, IChannelImportCo
       }
     `;
 
- const productVariables = {
-  input: {
-    id: payload.externalProductId,
-    title: payload.title,
-    descriptionHtml: payload.description || "",
-    vendor: payload.brand || "",
-    productType: payload.category || "",
-    status: this.mapStatus(payload.status as string),
-  },
-};
+    const productVariables = {
+      input: {
+        id: payload.externalProductId,
+        title: payload.title,
+        descriptionHtml: payload.description || "",
+        vendor: payload.brand || "",
+        productType: payload.category || "",
+        status: this.mapStatus(payload.status as string),
+      },
+    };
 
     const data = await this.executeGraphQL(storeUrl, credentials, productQuery, productVariables, payload.integrationId);
     const productResult = data?.productUpdate;
