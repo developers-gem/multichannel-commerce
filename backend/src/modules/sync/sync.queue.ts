@@ -42,11 +42,12 @@
 import { Queue } from "bullmq";
 import Redis from "ioredis";
 import { env } from "../../config/env";
+import { redisLogTarget, resolveRedisUrl } from "../../config/redis-url";
 import { ISyncJobPayload } from "./sync.types";
 
 export const QUEUE_NAME = "product-sync-queue";
 
-const redisUrl = env.REDIS_URL || (env.REDIS_ENABLED ? `redis://${env.REDIS_HOST || 'localhost'}:${env.REDIS_PORT || 6379}` : "");
+const redisUrl = resolveRedisUrl();
 
 export const redisConnection = redisUrl
   ? new Redis(redisUrl, {
@@ -59,12 +60,16 @@ export const redisConnection = redisUrl
     })
   : null;
 
+if (!redisUrl) {
+  console.error("Redis unavailable: REDIS_URL or REDIS_HOST is not configured. Sync jobs cannot be queued.");
+}
+
 redisConnection?.on("connect", () => {
-  console.log("✅ Connected to Redis/Valkey successfully");
+  console.log(`Redis connected (${redisLogTarget(redisUrl)})`);
 });
 
 redisConnection?.on("error", (err) => {
-  console.warn("⚠️ Redis is unavailable or not reachable; queue processing will be skipped until Redis is available.", err.message);
+  console.error(`Redis unavailable: ${err.message}`);
 });
 
 export const productSyncQueue = redisConnection

@@ -636,7 +636,6 @@ export default function IntegrationsPage() {
 
   // Test Connection loading state
   const [testingId, setTestingId] = useState<string | null>(null);
-
   const { data, isLoading, isError, error, refetch } = useIntegrations();
   const importMutation = useCatalogImport();
   const testConnectionMutation = useTestIntegrationConnection();
@@ -754,10 +753,12 @@ export default function IntegrationsPage() {
           </p>
         </div>
 
-        <Button onClick={handleOpenAddModal} className="shrink-0">
-          <Plus className="mr-2 h-4 w-4" />
-          Connect Channel
-        </Button>
+        <div className="flex shrink-0 gap-2">
+          <Button onClick={handleOpenAddModal} className="shrink-0">
+            <Plus className="mr-2 h-4 w-4" />
+            Connect Channel
+          </Button>
+        </div>
       </div>
 
       {/* Controls Bar (Search + Platform Filter Dropdown) */}

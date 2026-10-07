@@ -48,7 +48,64 @@ const productMappingSchema = new Schema<IProductMapping>(
       default: "",
     },
 
+    channelPrice: {
+      type: Number,
+      min: 0,
+    },
+
+    channelQuantity: {
+      type: Number,
+      min: 0,
+    },
+
+    channelCurrency: {
+      type: String,
+      trim: true,
+      uppercase: true,
+      minlength: 3,
+      maxlength: 3,
+    },
+
+    channelCategoryId: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+
+    channelCategoryName: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+
+    channelAspects: {
+      type: Schema.Types.Mixed,
+      default: undefined,
+    },
+
+    missingAspects: {
+      type: [String],
+      default: [],
+    },
+
+    shippingCost: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
+    platformFeePercentage: {
+      type: Number,
+      min: 0,
+    },
+
+    fixedFee: {
+      type: Number,
+      min: 0,
+    },
+
     syncStatus: {
+
       type: String,
       enum: Object.values(SyncStatus),
       default: SyncStatus.PENDING,

@@ -26,6 +26,8 @@ export interface ISyncLog {
   productId: Types.ObjectId;
   productMappingId: Types.ObjectId;
   integrationId: Types.ObjectId;
+  platform?: string;
+  externalId?: string;
   action: SyncJobAction;
   status: SyncLogStatus;
   attempts: number;

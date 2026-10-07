@@ -159,6 +159,7 @@ class SyncService {
       productId: product._id,
       productMappingId: mapping._id,
       integrationId: integration._id,
+      platform: integration.platform,
       action,
       status: SyncLogStatus.PENDING,
       attempts: 0,
@@ -205,6 +206,9 @@ class SyncService {
       const job = await productSyncQueue.add("syncJob", jobPayload, {
         jobId: syncLog._id.toString(),
       });
+      console.log(
+        `Job queued ${job?.id || syncLog._id.toString()} platform=${integration.platform} action=${action} syncLog=${syncLog._id.toString()}`
+      );
 
       return {
         syncLogId: syncLog._id,
@@ -213,6 +217,7 @@ class SyncService {
       };
     } catch (queueErr: any) {
       const error = queueErr?.message || "Failed to enqueue sync job";
+      console.error(`Job failed to queue for syncLog ${syncLog._id.toString()}: ${error}`);
       await SyncLog.findByIdAndUpdate(syncLog._id, { status: SyncLogStatus.FAILED, completedAt: new Date(), error });
       throw new ApiError(HTTP_STATUS.SERVICE_UNAVAILABLE, error);
     }
@@ -245,7 +250,13 @@ class SyncService {
         const res = await this.enqueueSyncJob(mapping._id.toString(), action, userId);
         results.push(res);
       } catch (err: any) {
-        // Skip duplicate active jobs (409) or inactive integrations (400) without throwing to allow other mappings to process
+        const statusCode = err?.statusCode;
+        if (statusCode === HTTP_STATUS.CONFLICT || statusCode === HTTP_STATUS.BAD_REQUEST) {
+          console.warn(`Sync job skipped for mapping ${mapping._id.toString()}: ${err?.message || "not queued"}`);
+          continue;
+        }
+        console.error(`Sync job failed to queue for mapping ${mapping._id.toString()}: ${err?.message || "queue error"}`);
+        throw err;
       }
     }
 

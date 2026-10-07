@@ -11,9 +11,11 @@ export interface CreateProductDto {
 
   images?: string[];
 
+  costPrice?: number;
   price: number;
   currency?: string;
   quantity: number;
+  inventoryMode?: "INDEPENDENT" | "SHARED";
   shippingCharge?: number;
 
   status?: ProductStatus;
@@ -21,4 +23,4 @@ export interface CreateProductDto {
 }
 
 export interface UpdateProductDto
-  extends Partial<CreateProductDto> {}
+  extends Partial<CreateProductDto> {}

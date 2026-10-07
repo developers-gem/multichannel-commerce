@@ -101,7 +101,7 @@ export default function ProductsPage() {
               </h3>
               <p className="text-xs sm:text-sm text-indigo-800/90 mt-0.5">
                 {hasIntegrations
-                  ? "Next step: Map your Master Products to your connected sales channels so price, quantity, and other changes can be synchronized."
+                  ? "Open a master product and use Channels to connect an existing Shopify or eBay listing, or publish a new one."
                   : "Connect a sales channel to start syncing your products."}
               </p>
             </div>
@@ -113,7 +113,7 @@ export default function ProductsPage() {
                 onClick={() => router.push("/product-mappings")}
                 className="w-full md:w-auto bg-indigo-600 hover:bg-indigo-700 text-white font-semibold shadow-sm"
               >
-                Go to Product Mappings
+                Channel Mappings
                 <ArrowRight className="ml-2 h-4 w-4" />
               </Button>
             ) : (

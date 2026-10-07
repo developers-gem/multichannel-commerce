@@ -5,6 +5,7 @@ import { productService } from "../products/product.service";
 import { MarketplaceConnectorFactory } from "../sync/connectors/connector.factory";
 import { IChannelImportConnector } from "../sync/connectors/connector.interface";
 import { SyncStatus } from "../../shared/enums/sync-status.enum";
+import { channelListingFromImport } from "../sync/channel-values";
 import { ApiError } from "../../utils/ApiError";
 import { HTTP_STATUS } from "../../shared/constants/http-status.constants";
 import { CATALOG_IMPORT_MESSAGES } from "./catalog-import.messages";
@@ -67,6 +68,14 @@ class CatalogImportService {
 
       const products = pageData.products || [];
       totalFetched += products.length;
+
+      for (const pageError of pageData.errors || []) {
+        failed++;
+        errors.push({
+          sku: pageError.sku || "",
+          message: pageError.message || "Channel row failed",
+        });
+      }
 
       // 4. Process each normalized channel product
       for (const normalized of products) {
@@ -134,19 +143,33 @@ class CatalogImportService {
             });
           }
 
+          if (mapping && String(mapping.productId) !== String(masterProduct._id)) {
+            failed++;
+            errors.push({
+              sku: skuUpper,
+              message: "Needs manual review: this channel listing is already linked to a different master product.",
+            });
+            continue;
+          }
+
+          const channelListing = channelListingFromImport(normalized);
+
           if (mapping) {
-            // Update existing ProductMapping external identifiers
+            // Update this channel's listing values. Master price and quantity stay as they are.
             mapping.externalProductId = normalized.externalProductId;
             mapping.externalVariantId = normalized.externalVariantId || "";
             mapping.externalInventoryItemId = normalized.externalInventoryItemId || "";
             mapping.externalSku = normalized.externalSku || skuUpper;
+            mapping.channelPrice = channelListing.channelPrice;
+            mapping.channelQuantity = channelListing.channelQuantity;
+            if (channelListing.channelCurrency) mapping.channelCurrency = channelListing.channelCurrency;
+            if (normalized.categoryId) mapping.channelCategoryId = normalized.categoryId;
             mapping.syncStatus = SyncStatus.SYNCED;
             mapping.lastSyncedAt = new Date();
             mapping.lastSyncError = "";
             await mapping.save();
             mappingsUpdated++;
           } else {
-            // Create new ProductMapping
             await ProductMapping.create({
               productId: masterProduct._id,
               integrationId: integration._id,
@@ -155,6 +178,10 @@ class CatalogImportService {
               externalVariantId: normalized.externalVariantId || "",
               externalInventoryItemId: normalized.externalInventoryItemId || "",
               externalSku: normalized.externalSku || skuUpper,
+              channelPrice: channelListing.channelPrice,
+              channelQuantity: channelListing.channelQuantity,
+              channelCurrency: channelListing.channelCurrency,
+              channelCategoryId: normalized.categoryId || "",
               syncStatus: SyncStatus.SYNCED,
               lastSyncedAt: new Date(),
               isActive: true,

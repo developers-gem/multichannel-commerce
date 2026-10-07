@@ -18,6 +18,14 @@ const syncLogSchema = new Schema<ISyncLog>(
       ref: "Integration",
       required: true,
     },
+    platform: {
+      type: String,
+      default: "",
+    },
+    externalId: {
+      type: String,
+      default: "",
+    },
     action: {
       type: String,
       enum: Object.values(SyncJobAction),

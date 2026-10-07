@@ -1,6 +1,5 @@
 import { Document, Types } from "mongoose";
 import { SyncStatus } from "../../shared/enums/sync-status.enum";
-import { assertPostgresVersion } from "bullmq";
 
 export interface IProductMapping extends Document {
   productId: Types.ObjectId;
@@ -10,6 +9,18 @@ export interface IProductMapping extends Document {
   externalVariantId?: string;
   externalInventoryItemId?: string;
   externalSku?: string;
+
+  channelPrice?: number;
+  channelQuantity?: number;
+  channelCurrency?: string;
+  channelCategoryId?: string;
+  channelCategoryName?: string;
+  channelAspects?: Record<string, string[]>;
+  missingAspects?: string[];
+  shippingCost?: number;
+  platformFeePercentage?: number;
+  fixedFee?: number;
+
   syncStatus: SyncStatus;
   lastSyncedAt?: Date;
   lastSyncError?: string;
@@ -17,4 +28,5 @@ export interface IProductMapping extends Document {
   isDeleted: boolean;
   createdAt: Date;
   updatedAt: Date;
-} 
+}
+ 

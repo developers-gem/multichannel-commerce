@@ -112,6 +112,13 @@ export async function triggerProductMappingSync(
   return data;
 }
 
+export async function enqueueSync(
+  productMappingId: string,
+  action: SyncAction = "UPDATE"
+): Promise<SyncEnqueueResponse> {
+  return triggerProductMappingSync(productMappingId, action);
+}
+
 export async function retrySync(
   syncLogId: string
 ): Promise<SyncEnqueueResponse> {

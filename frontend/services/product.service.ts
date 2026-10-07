@@ -146,12 +146,18 @@ export async function syncProductChannels(id: string): Promise<ApiResponse<{ enq
 
 export async function publishProductToChannels(
   id: string,
-  integrationIds: string[]
-): Promise<ApiResponse<{ enqueuedCount: number }>> {
+  integrationIds: string[],
+  channels?: Array<{
+    integrationId: string;
+    channelPrice?: number;
+    channelQuantity?: number;
+    channelCurrency?: string;
+  }>
+): Promise<ApiResponse<{ enqueuedCount: number; results?: Array<{ integrationId: string; status: string; error?: string }> }>> {
   const response = await fetch(`${API_URL}/api/products/${id}/publish`, {
     method: "POST",
     headers: getAuthHeaders(),
-    body: JSON.stringify({ integrationIds }),
+    body: JSON.stringify(channels?.length ? { channels } : { integrationIds }),
   });
 
   if (response.status === 401) {

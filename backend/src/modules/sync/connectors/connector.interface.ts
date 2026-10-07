@@ -13,6 +13,10 @@ export interface SyncPayload {
   externalProductId?: string;
   externalVariantId?: string;
   externalInventoryItemId?: string;
+  channelCategoryId?: string;
+  channelCategoryName?: string;
+  channelAspects?: Record<string, string[]>;
+  aspects?: Record<string, string[]>;
   storeUrl?: string;
   integrationId?: string;
   credentials?: Record<string, unknown>;
@@ -22,7 +26,12 @@ export interface SyncResult {
   success: boolean;
   externalProductId?: string;
   externalVariantId?: string;
+  externalInventoryItemId?: string;
   externalSku?: string;
+  categoryId?: string;
+  categoryName?: string;
+  aspects?: Record<string, string[]>;
+  missingAspects?: string[];
   error?: string;
 }
 
@@ -58,6 +67,7 @@ export interface NormalizedChannelProduct {
   externalVariantId?: string;
   externalInventoryItemId?: string;
   externalSku?: string;
+  categoryId?: string;
 }
 
 /**
@@ -67,6 +77,7 @@ export interface PaginatedChannelProducts {
   products: NormalizedChannelProduct[];
   nextCursor?: string | null;
   hasNextPage: boolean;
+  errors?: Array<{ sku: string; message: string }>;
 }
 
 /**

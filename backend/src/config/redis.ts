@@ -1,50 +1,30 @@
-// import Redis from 'ioredis';
-
-// const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
-
-// export const redis = new Redis(redisUrl, {
-//   maxRetriesPerRequest: null, // Required by BullMQ
-// });
-
-// redis.on('connect', () => {
-//   console.log('Connected to Redis/Valkey successfully');
-// });
-
-// redis.on('error', (err) => {
-//   console.error('Redis connection error:', err);
-// });
-
 // backend/src/config/redis.ts
-import Redis from 'ioredis';
-import { Queue } from 'bullmq';
+import Redis from "ioredis";
+import { Queue } from "bullmq";
+import { redisLogTarget, resolveRedisUrl } from "./redis-url";
 
-const rawHost = process.env.REDIS_HOST || 'localhost';
-const hostUrl = rawHost.startsWith('redis://') || rawHost.startsWith('rediss://')
-  ? rawHost
-  : `redis://${rawHost}:${process.env.REDIS_PORT || 6379}`;
+const redisUrl = resolveRedisUrl();
 
-const redisUrl = process.env.REDIS_URL || hostUrl;
+if (!redisUrl) {
+  console.error("Redis unavailable: REDIS_URL or REDIS_HOST is not configured");
+}
 
-// Shared ioredis client
-export const redisConnection = new Redis(redisUrl, {
-  maxRetriesPerRequest: null, // Required for BullMQ
+// Shared ioredis client for locks and OAuth state. Sync jobs use sync.queue.ts.
+export const redisConnection = new Redis(redisUrl || "redis://127.0.0.1:6379", {
+  maxRetriesPerRequest: null,
   enableOfflineQueue: false,
-  retryStrategy: () => null, // Stop reconnecting continuously if offline in test/dev
-});
-  
-redisConnection.on('connect', () => {
-  console.log('✅ Connected to Redis/Valkey successfully');
+  lazyConnect: !redisUrl,
+  retryStrategy: () => null,
 });
 
-
-
-
-
-redisConnection.on('error', (err) => {
-  // Silent warning if Redis is offline during local test/dev
+redisConnection.on("connect", () => {
+  console.log(`Redis connected (${redisLogTarget(redisUrl || "redis://127.0.0.1:6379")})`);
 });
 
-// Initialize BullMQ Queue for background syncs
-export const productSyncQueue = new Queue('product-sync', {
+redisConnection.on("error", (err) => {
+  console.error(`Redis unavailable: ${err.message}`);
+});
+
+export const productSyncQueue = new Queue("product-sync", {
   connection: redisConnection,
 });
