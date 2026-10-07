@@ -645,7 +645,7 @@ export class ShopifyConnector implements IMarketplaceConnector, IChannelImportCo
           {
             id: targetVariantId,
             price: String(payload.price),
-            sku: payload.sku,
+            // sku: payload.sku,
           },
         ],
       };
