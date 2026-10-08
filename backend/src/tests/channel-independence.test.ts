@@ -3,9 +3,11 @@ import {
   channelListingFromImport,
   resolveChannelPrice,
   resolveChannelQuantity,
+  resolveSyncAction,
   seedChannelListing,
   syncTargetsForMappingUpdate,
 } from "../modules/sync/channel-values";
+import { SyncJobAction } from "../modules/sync/sync.types";
 
 function run() {
   const seeded = seedChannelListing({
@@ -50,6 +52,12 @@ function run() {
   assert.deepStrictEqual(syncTargetsForMappingUpdate("shopify-mapping", { channelPrice: 45 }), ["shopify-mapping"]);
   assert.deepStrictEqual(syncTargetsForMappingUpdate("ebay-mapping", { channelQuantity: 10 }), ["ebay-mapping"]);
   assert.deepStrictEqual(syncTargetsForMappingUpdate("ebay-mapping", {}), []);
+
+  assert.strictEqual(resolveSyncAction(SyncJobAction.UPDATE, ""), SyncJobAction.CREATE);
+  assert.strictEqual(resolveSyncAction(SyncJobAction.UPDATE, null), SyncJobAction.CREATE);
+  assert.strictEqual(resolveSyncAction(SyncJobAction.UPDATE, " gid://shopify/Product/123 "), SyncJobAction.UPDATE);
+  assert.strictEqual(resolveSyncAction(SyncJobAction.CREATE, "gid://shopify/Product/123"), SyncJobAction.UPDATE);
+  assert.strictEqual(resolveSyncAction(SyncJobAction.DELETE, ""), SyncJobAction.DELETE);
 
   console.log("Channel independence tests passed");
 }

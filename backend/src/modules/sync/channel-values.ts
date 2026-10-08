@@ -1,3 +1,5 @@
+import { SyncJobAction } from "./sync.types";
+
 /**
  * Channel listing values are independent per ProductMapping.
  * Master product price/quantity are defaults only when a mapping has no channel value.
@@ -74,6 +76,15 @@ export function syncTargetsForMappingUpdate(
   data: { channelPrice?: number; channelQuantity?: number; channelCurrency?: string }
 ): string[] {
   return isChannelListingPatch(data) ? [mappingId] : [];
+}
+
+export function resolveSyncAction(
+  requestedAction: SyncJobAction,
+  externalProductId: unknown
+): SyncJobAction {
+  if (requestedAction === SyncJobAction.DELETE) return SyncJobAction.DELETE;
+  const hasExternalProductId = typeof externalProductId === "string" && externalProductId.trim().length > 0;
+  return hasExternalProductId ? SyncJobAction.UPDATE : SyncJobAction.CREATE;
 }
 
 export function resolveChannelShippingCost(mappingShipping: unknown, masterShipping: unknown): number {

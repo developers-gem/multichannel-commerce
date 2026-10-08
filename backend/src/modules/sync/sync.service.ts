@@ -12,7 +12,7 @@ import { HTTP_STATUS } from "../../shared/constants/http-status.constants";
 import { SYNC_MESSAGES } from "./sync.messages";
 import { env } from "../../config/env";
 import { MarketplaceConnectorFactory } from "./connectors/connector.factory";
-import { resolveChannelPrice, resolveChannelQuantity } from "./channel-values";
+import { resolveChannelPrice, resolveChannelQuantity, resolveSyncAction } from "./channel-values";
 
 class SyncService {
   private async executeDirectMarketplaceSync(
@@ -122,6 +122,8 @@ class SyncService {
       throw new ApiError(HTTP_STATUS.NOT_FOUND, SYNC_MESSAGES.MAPPING_NOT_FOUND);
     }
 
+    const effectiveAction = resolveSyncAction(action, mapping.externalProductId);
+
     // 2. Verify master Product exists
     const product = await Product.findOne({
       _id: mapping.productId,
@@ -146,7 +148,7 @@ class SyncService {
     // 4. Idempotency Check: Prevent duplicate active jobs for the same ProductMapping + Action
     const activeSyncLog = await SyncLog.findOne({
       productMappingId: mapping._id,
-      action,
+      action: effectiveAction,
       status: { $in: [SyncLogStatus.PENDING, SyncLogStatus.PROCESSING] },
     });
 
@@ -161,7 +163,7 @@ class SyncService {
       productMappingId: mapping._id,
       integrationId: integration._id,
       platform: integration.platform,
-      action,
+      action: effectiveAction,
       status: SyncLogStatus.PENDING,
       attempts: 0,
       maxAttempts,
@@ -173,7 +175,7 @@ class SyncService {
       productId: product._id.toString(),
       productMappingId: mapping._id.toString(),
       integrationId: integration._id.toString(),
-      action,
+      action: effectiveAction,
     };
 
     // 6. Push job to BullMQ queue or fall back to direct execution when Redis is unavailable
@@ -183,7 +185,7 @@ class SyncService {
         product._id.toString(),
         mapping._id.toString(),
         integration._id.toString(),
-        action
+        effectiveAction
       );
 
       if (!result?.success) {
@@ -208,7 +210,7 @@ class SyncService {
         jobId: syncLog._id.toString(),
       });
       console.log(
-        `Job queued ${job?.id || syncLog._id.toString()} platform=${integration.platform} action=${action} syncLog=${syncLog._id.toString()}`
+        `Job queued ${job?.id || syncLog._id.toString()} platform=${integration.platform} action=${effectiveAction} syncLog=${syncLog._id.toString()}`
       );
 
       return {
