@@ -1,6 +1,7 @@
 import { parse } from "csv-parse/sync";
 import Product from "../products/product.model";
-import { productService } from "../products/product.service";
+import { syncService } from "../sync/sync.service";
+import { SyncJobAction } from "../sync/sync.types";
 import { ApiError } from "../../utils/ApiError";
 import { HTTP_STATUS } from "../../shared/constants/http-status.constants";
 import { ProductStatus } from "../../shared/enums/product-status.enum";
@@ -69,7 +70,6 @@ class CsvImportService {
     let updated = 0;
     let failed = 0;
     const errors: CsvRowError[] = [];
-    const seenSkusInCsv = new Set<string>();
 
     // Process each CSV row independently
     for (let index = 0; index < records.length; index++) {
@@ -91,19 +91,6 @@ class CsvImportService {
 
       const skuUpper = rawSku.toUpperCase();
 
-      // Check duplicate SKU inside the same CSV file
-      if (seenSkusInCsv.has(skuUpper)) {
-        errors.push({
-          row: rowNumber,
-          sku: skuUpper,
-          message: "Duplicate SKU found in CSV file",
-        });
-        failed++;
-        continue;
-      }
-
-      seenSkusInCsv.add(skuUpper);
-
       // Extract Title (Optional for CSV imports / updates)
       const rawTitle = getRecordValue(record, "title");
       const title = rawTitle !== undefined && rawTitle !== "" ? rawTitle : undefined;
@@ -118,8 +105,21 @@ class CsvImportService {
       const rawCategory = getRecordValue(record, "category");
       const category = rawCategory !== undefined && rawCategory !== "" ? rawCategory : undefined;
 
-      // Extract Price / Cost (supports price, cost, costprice column headers)
-      const rawPrice = getRecordValue(record, "price", "cost", "costprice");
+      // Cost and base price are separate Master Product fields.
+      const rawCostPrice = getRecordValue(record, "costprice", "cost");
+      let costPrice: number | undefined;
+
+      if (rawCostPrice !== undefined && rawCostPrice !== "") {
+        const parsedCostPrice = Number(rawCostPrice);
+        if (!Number.isFinite(parsedCostPrice) || parsedCostPrice < 0) {
+          errors.push({ row: rowNumber, sku: skuUpper, message: "Cost must be a valid non-negative number" });
+          failed++;
+          continue;
+        }
+        costPrice = parsedCostPrice;
+      }
+
+      const rawPrice = getRecordValue(record, "price", "baseprice");
       let price: number | undefined = undefined;
 
       if (rawPrice !== undefined && rawPrice !== "") {
@@ -128,7 +128,7 @@ class CsvImportService {
           errors.push({
             row: rowNumber,
             sku: skuUpper,
-            message: "Cost/Price must be a valid number",
+            message: "Base price must be a valid number",
           });
           failed++;
           continue;
@@ -137,12 +137,23 @@ class CsvImportService {
           errors.push({
             row: rowNumber,
             sku: skuUpper,
-            message: "Price cannot be negative",
+            message: "Base price cannot be negative",
           });
           failed++;
           continue;
         }
         price = parsedPrice;
+      }
+
+      const rawCurrency = getRecordValue(record, "currency");
+      let currency: string | undefined;
+      if (rawCurrency !== undefined && rawCurrency !== "") {
+        currency = rawCurrency.toUpperCase();
+        if (!/^[A-Z]{3}$/.test(currency)) {
+          errors.push({ row: rowNumber, sku: skuUpper, message: "Currency must be a 3-letter code" });
+          failed++;
+          continue;
+        }
       }
 
       // Extract Quantity (supports quantity, qty column headers)
@@ -236,7 +247,9 @@ class CsvImportService {
         brand,
         category,
         images,
+        costPrice,
         price,
+        currency,
         quantity,
         shippingCharge,
         status,
@@ -258,58 +271,75 @@ class CsvImportService {
         continue;
       }
 
-      // Upsert product by SKU
+      // Upsert by the unique SKU index so concurrent imports cannot insert duplicates.
       try {
-        const existingProduct = await Product.findOne({
-          sku: skuUpper,
-          isDeleted: false,
-        });
-
-        if (existingProduct) {
-          // Construct update payload with ONLY the fields supplied in CSV
-          const updatePayload: Record<string, any> = {};
-
-          if (title !== undefined) updatePayload.title = title;
-          if (description !== undefined) updatePayload.description = description;
-          if (brand !== undefined) updatePayload.brand = brand;
-          if (category !== undefined) updatePayload.category = category;
-          if (images !== undefined) updatePayload.images = images;
-          if (price !== undefined) updatePayload.price = price;
-          if (quantity !== undefined) updatePayload.quantity = quantity;
-          if (shippingCharge !== undefined) updatePayload.shippingCharge = shippingCharge;
-          if (status !== undefined) updatePayload.status = status;
-
-          await productService.update(existingProduct._id.toString(), updatePayload);
-          updated++;
-        } else {
-          // Creating a brand-new product requires Title
-          if (!title) {
-            errors.push({
-              row: rowNumber,
-              sku: skuUpper,
-              message: "Title is required to create a new product",
-            });
+        if (!title) {
+          const existingProduct = await Product.exists({ sku: skuUpper });
+          if (!existingProduct) {
+            errors.push({ row: rowNumber, sku: skuUpper, message: "Title is required to create a new product" });
             failed++;
             continue;
           }
+        }
 
-          const createPayload = {
-            sku: skuUpper,
-            title,
-            description: description ?? "",
-            brand: brand ?? "",
-            category: category ?? "",
-            images: images ?? [],
-            price: price ?? 0,
-            quantity: quantity ?? 0,
-            shippingCharge: shippingCharge ?? 0,
-            status: status ?? ProductStatus.ACTIVE,
-          };
+        const updatePayload: Record<string, unknown> = { isDeleted: false };
+        if (title !== undefined) updatePayload.title = title;
+        if (description !== undefined) updatePayload.description = description;
+        if (brand !== undefined) updatePayload.brand = brand;
+        if (category !== undefined) updatePayload.category = category;
+        if (images !== undefined) updatePayload.images = images;
+        if (costPrice !== undefined) updatePayload.costPrice = costPrice;
+        if (price !== undefined) updatePayload.price = price;
+        if (currency !== undefined) updatePayload.currency = currency;
+        if (quantity !== undefined) updatePayload.quantity = quantity;
+        if (shippingCharge !== undefined) updatePayload.shippingCharge = shippingCharge;
+        if (status !== undefined) updatePayload.status = status;
 
-          await productService.create(createPayload);
+        const result = await Product.updateOne(
+          { sku: skuUpper },
+          {
+            $set: updatePayload,
+            ...(title ? { $setOnInsert: { sku: skuUpper } } : {}),
+          },
+          {
+            upsert: Boolean(title),
+            runValidators: true,
+            setDefaultsOnInsert: true,
+          }
+        );
+
+        if (!result.matchedCount && !result.upsertedCount) {
+          throw new Error("Product could not be found or created for this SKU");
+        }
+
+        const product = await Product.findOne({ sku: skuUpper }).select("_id").lean();
+        if (!product) throw new Error("Product could not be loaded after CSV upsert");
+
+        if (result.upsertedCount > 0) {
           created++;
+        } else {
+          updated++;
+          await syncService.enqueueSyncJobsForProduct(product._id.toString(), SyncJobAction.UPDATE);
         }
       } catch (err: any) {
+        if (err?.code === 11000 && title) {
+          try {
+            const retryResult = await Product.updateOne(
+              { sku: skuUpper },
+              { $set: { isDeleted: false, ...(title !== undefined ? { title } : {}), ...(description !== undefined ? { description } : {}), ...(brand !== undefined ? { brand } : {}), ...(category !== undefined ? { category } : {}), ...(images !== undefined ? { images } : {}), ...(costPrice !== undefined ? { costPrice } : {}), ...(price !== undefined ? { price } : {}), ...(currency !== undefined ? { currency } : {}), ...(quantity !== undefined ? { quantity } : {}), ...(shippingCharge !== undefined ? { shippingCharge } : {}), ...(status !== undefined ? { status } : {}) } },
+              { upsert: false, runValidators: true }
+            );
+            if (retryResult.matchedCount > 0) {
+              const existingProduct = await Product.findOne({ sku: skuUpper }).select("_id").lean();
+              if (!existingProduct) throw err;
+              updated++;
+              await syncService.enqueueSyncJobsForProduct(existingProduct._id.toString(), SyncJobAction.UPDATE);
+              continue;
+            }
+          } catch (retryError: any) {
+            err = retryError;
+          }
+        }
         errors.push({
           row: rowNumber,
           sku: skuUpper,
