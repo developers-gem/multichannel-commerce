@@ -4,35 +4,23 @@ import { useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { toast } from "sonner";
+import { Plus } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useProduct } from "@/hooks/use-products";
 import { useIntegrations } from "@/hooks/use-integrations";
-import { useCreateProductMapping, useProductMappings, useUpdateProductMapping } from "@/hooks/use-product-mappings";
+import { useProductMappings, useUpdateProductMapping } from "@/hooks/use-product-mappings";
 import { useTriggerSync } from "@/hooks/use-sync";
 import { suggestEbayCategories, EbayCategorySuggestion } from "@/services/integration.service";
-import { getChannelListings } from "@/services/product-mapping.service";
 import ProductMappingFormModal from "@/components/product-mappings/product-mapping-form-modal";
 import ProductPublishModal from "@/components/products/product-publish-modal";
-import { ChannelListing, ProductMapping } from "@/types/product-mapping";
+import { ProductMapping } from "@/types/product-mapping";
 import { Integration } from "@/types/integration";
 import { Product } from "@/types/product";
 
 function integrationIdOf(mapping: ProductMapping): string {
   return typeof mapping.integrationId === "object" ? mapping.integrationId._id : mapping.integrationId;
-}
-
-function listingKey(listing: ChannelListing): string {
-  return `${listing.externalProductId}::${listing.externalVariantId || ""}`;
-}
-
-function matchesQuery(listing: ChannelListing, query: string): boolean {
-  const needle = query.trim().toLowerCase();
-  if (!needle) return true;
-  return [listing.title, listing.externalSku, listing.externalProductId, listing.externalVariantId]
-    .filter(Boolean)
-    .some((value) => String(value).toLowerCase().includes(needle));
 }
 
 function channelLabel(platform: string): string {
@@ -121,7 +109,7 @@ export default function ProductDetailPage() {
           <div>
           <h2 className="text-xl font-semibold text-slate-900">Channels</h2>
           <p className="text-sm text-slate-500">
-            Publish new listings with channel-specific values, or connect listings that already exist.
+            Each sales channel has its own mapping, price, and quantity.
           </p>
           </div>
           <Button onClick={() => setIsPublishModalOpen(true)}>
@@ -140,6 +128,7 @@ export default function ProductDetailPage() {
             product={product}
             integration={integration}
             mapping={mappings.find((item) => integrationIdOf(item) === integration._id)}
+            existingMappings={mappings}
           />
         ))}
       </section>
@@ -156,83 +145,22 @@ function ChannelStoreCard({
   product,
   integration,
   mapping,
+  existingMappings,
 }: {
   product: Product;
   integration: Integration;
   mapping?: ProductMapping;
+  existingMappings: ProductMapping[];
 }) {
   const updateMapping = useUpdateProductMapping();
-  const createMapping = useCreateProductMapping();
   const triggerSync = useTriggerSync();
-  const [mode, setMode] = useState<"idle" | "connect">("idle");
   const [isMappingModalOpen, setIsMappingModalOpen] = useState(false);
-  const [price, setPrice] = useState(mapping?.channelPrice !== undefined ? String(mapping.channelPrice) : "");
-  const [quantity, setQuantity] = useState(mapping?.channelQuantity !== undefined ? String(mapping.channelQuantity) : "");
-  const [listings, setListings] = useState<ChannelListing[]>([]);
-  const [listingsMessage, setListingsMessage] = useState("");
-  const [listingsLoading, setListingsLoading] = useState(false);
-  const [query, setQuery] = useState("");
-  const [selectedKey, setSelectedKey] = useState("");
   const [categoryQuery, setCategoryQuery] = useState("");
   const [suggestions, setSuggestions] = useState<EbayCategorySuggestion[]>([]);
   const [setupOpen, setSetupOpen] = useState(false);
 
   const label = channelLabel(integration.platform);
-  const listingNoun = integration.platform === "EBAY" ? "Listing" : "Product";
-  const selected = listings.find((listing) => listingKey(listing) === selectedKey);
-  const visibleListings = listings.filter((listing) => matchesQuery(listing, query));
   const categoryMissing = integration.platform === "EBAY" && Boolean(mapping) && !mapping?.channelCategoryId;
-
-  const openConnect = async () => {
-    setMode("connect");
-    setListingsLoading(true);
-    setListingsMessage("");
-    setSelectedKey("");
-    try {
-      const result = await getChannelListings(integration._id);
-      const payload = result.data;
-      const nextListings = Array.isArray(payload) ? payload : payload?.listings || [];
-      setListings(nextListings);
-      setListingsMessage(!Array.isArray(payload) && payload?.message ? payload.message : "");
-    } catch (err: unknown) {
-      setListings([]);
-      setListingsMessage(err instanceof Error ? err.message : "Failed to load existing listings");
-    } finally {
-      setListingsLoading(false);
-    }
-  };
-
-  const chooseListing = (listing: ChannelListing) => {
-    setSelectedKey(listingKey(listing));
-    setPrice(listing.channelPrice !== undefined && listing.channelPrice !== null ? String(listing.channelPrice) : "");
-    setQuantity(listing.channelQuantity !== undefined && listing.channelQuantity !== null ? String(listing.channelQuantity) : "");
-  };
-
-  const connectListing = () => {
-    if (!selected) return;
-    createMapping.mutate(
-      {
-        productId: product._id,
-        integrationId: integration._id,
-        externalProductId: selected.externalProductId,
-        externalVariantId: selected.externalVariantId || undefined,
-        externalInventoryItemId: selected.externalInventoryItemId || undefined,
-        externalSku: selected.externalSku || undefined,
-        channelPrice: price === "" ? selected.channelPrice : Number(price),
-        channelQuantity: quantity === "" ? selected.channelQuantity : Number(quantity),
-        channelCurrency: selected.channelCurrency || product.currency || "USD",
-        channelCategoryId: selected.channelCategoryId || undefined,
-        channelCategoryName: selected.channelCategoryName || undefined,
-      },
-      {
-        onSuccess: () => {
-          setMode("idle");
-          toast.success(`${label} listing connected. Its price and quantity stay on this store.`);
-        },
-        onError: (err: Error) => toast.error(err.message || "Failed to connect listing"),
-      }
-    );
-  };
 
   const syncNow = () => {
     if (!mapping) return;
@@ -255,7 +183,7 @@ function ChannelStoreCard({
       {mapping ? (
         <div className="space-y-3">
           <div className="text-sm text-slate-700">
-            <p className="font-medium">Existing {label} {listingNoun}</p>
+            <p className="font-medium">{label} Mapping</p>
             <p className="text-xs text-slate-500">Store: {integration.storeName}</p>
           </div>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -345,63 +273,20 @@ function ChannelStoreCard({
         </div>
       ) : (
         <div className="space-y-3">
-          {mode === "idle" && (
-            <div className="flex flex-wrap gap-2">
-              <Button onClick={openConnect}>Connect Existing {label} {listingNoun}</Button>
-            </div>
-          )}
-
-          {mode === "connect" && (
-            <div className="space-y-3">
-              <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search by title, SKU, or external ID" />
-              {listingsLoading && <p className="text-sm text-slate-500">Loading existing listings for {integration.storeName}...</p>}
-              {listingsMessage && <p className="text-sm text-amber-700">{listingsMessage}</p>}
-              {!listingsLoading && listings.length === 0 && (
-                <div className="space-y-2">
-                  <p className="text-sm text-slate-600">No existing listings found on this channel.</p>
-                </div>
-              )}
-              {!listingsLoading && visibleListings.length > 0 && (
-                <select
-                  className="flex h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm"
-                  value={selectedKey}
-                  onChange={(event) => {
-                    const listing = listings.find((item) => listingKey(item) === event.target.value);
-                    if (listing) chooseListing(listing);
-                  }}
-                >
-                  <option value="">Select an existing channel listing</option>
-                  {visibleListings.map((listing) => (
-                    <option key={listingKey(listing)} value={listingKey(listing)}>
-                      {listing.title} — {listing.externalSku || listing.externalProductId}
-                    </option>
-                  ))}
-                </select>
-              )}
-              {selected && (
-                <div className="grid max-w-md grid-cols-2 gap-3">
-                  <Input type="number" min="0" step="0.01" value={price} onChange={(event) => setPrice(event.target.value)} placeholder="Channel price" />
-                  <Input type="number" min="0" step="1" value={quantity} onChange={(event) => setQuantity(event.target.value)} placeholder="Channel quantity" />
-                </div>
-              )}
-              <div className="flex flex-wrap gap-2">
-                <Button onClick={connectListing} disabled={!selected || createMapping.isPending}>Connect</Button>
-                <Button variant="outline" onClick={() => setMode("idle")}>Cancel</Button>
-              </div>
-            </div>
-          )}
-
+          <Button onClick={() => setIsMappingModalOpen(true)}>
+            <Plus className="mr-2 h-4 w-4" />
+            Add {label}
+          </Button>
         </div>
       )}
-      {mapping && (
-        <ProductMappingFormModal
-          isOpen={isMappingModalOpen}
-          onClose={() => setIsMappingModalOpen(false)}
-          initialData={mapping}
-          defaultProductId={product._id}
-          defaultIntegrationId={integration._id}
-        />
-      )}
+      <ProductMappingFormModal
+        isOpen={isMappingModalOpen}
+        onClose={() => setIsMappingModalOpen(false)}
+        initialData={mapping}
+        defaultProductId={product._id}
+        defaultIntegrationId={integration._id}
+        existingMappings={existingMappings}
+      />
     </div>
   );
 }

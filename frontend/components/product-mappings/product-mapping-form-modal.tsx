@@ -64,6 +64,7 @@ export default function ProductMappingFormModal({
   onClose,
   initialData,
   defaultProductId,
+  defaultIntegrationId,
   existingMappings = EMPTY_MAPPINGS,
 }: ProductMappingFormModalProps) {
   const isEditing = Boolean(initialData);
@@ -73,7 +74,9 @@ export default function ProductMappingFormModal({
   const { data: productsData, isLoading: isLoadingProducts } = useProducts(1, 100);
   const { data: integrationsData, isLoading: isLoadingIntegrations } = useIntegrations();
   const activeIntegrations = (integrationsData?.data || []).filter(
-    (integration) => integration.isActive && (integration.platform === "SHOPIFY" || integration.platform === "EBAY")
+    (integration) => integration.isActive &&
+      (integration.platform === "SHOPIFY" || integration.platform === "EBAY") &&
+      (!defaultIntegrationId || integration._id === defaultIntegrationId)
   );
   const activeIntegrationKey = activeIntegrations.map((integration) => integration._id).join("|");
 
@@ -109,6 +112,10 @@ export default function ProductMappingFormModal({
   const selectedProductId = watch("productId");
   const mappingsForProduct = existingMappings.filter((mapping) => productIdOf(mapping) === selectedProductId);
   const existingMappingKey = mappingsForProduct.map(integrationIdOf).sort().join("|");
+  const availableIntegrations = activeIntegrations.filter(
+    (integration) => !mappingsForProduct.some((mapping) => integrationIdOf(mapping) === integration._id)
+  );
+  const canAddMapping = availableIntegrations.some((integration) => channelConfigurations[integration._id]?.enabled);
 
   useEffect(() => {
     if (initialData) {
@@ -357,10 +364,13 @@ export default function ProductMappingFormModal({
                 <div className="rounded-lg border border-dashed p-4 text-sm text-slate-500">
                   Select a Master Product to configure its connected channels.
                 </div>
+              ) : availableIntegrations.length === 0 ? (
+                <div className="rounded-lg border border-dashed p-4 text-sm text-slate-500">
+                  All connected Shopify and eBay channels already have mappings for this Master Product. Edit their values from the Channel Mappings table.
+                </div>
               ) : (
-                activeIntegrations.map((integration) => {
+                availableIntegrations.map((integration) => {
                   const configuration = channelConfigurations[integration._id];
-                  const existingMapping = mappingsForProduct.find((mapping) => integrationIdOf(mapping) === integration._id);
                   if (!configuration) return null;
 
                   const channelName = integration.platform === "SHOPIFY" ? "Shopify" : "eBay";
@@ -370,12 +380,7 @@ export default function ProductMappingFormModal({
                         <h3 className="font-semibold text-slate-900">{integration.platform}</h3>
                         <p className="text-sm text-slate-500">Store: {integration.storeName}</p>
                       </div>
-                      {existingMapping ? (
-                        <p className="text-sm text-slate-600">
-                          This Master Product already has a {channelName} mapping for this store. Edit it from the Channel Mappings table.
-                        </p>
-                      ) : (
-                        <>
+                      <>
                           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                             <div>
                               <Label htmlFor={`channelPrice-${integration._id}`}>Channel Price</Label>
@@ -422,8 +427,7 @@ export default function ProductMappingFormModal({
                               Enable {channelName} Sync
                             </Label>
                           </div>
-                        </>
-                      )}
+                      </>
                     </section>
                   );
                 })
@@ -435,7 +439,7 @@ export default function ProductMappingFormModal({
             <Button type="button" variant="outline" onClick={onClose}>
               Cancel
             </Button>
-            <Button type="submit" disabled={isSubmitting}>
+            <Button type="submit" disabled={isSubmitting || (!isEditing && !canAddMapping)}>
               {isSubmitting ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
