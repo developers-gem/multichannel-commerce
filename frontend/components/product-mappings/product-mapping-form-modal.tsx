@@ -10,32 +10,37 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ChannelListing, ProductMapping } from "@/types/product-mapping";
+import { ProductMapping } from "@/types/product-mapping";
 import { useCreateProductMapping, useUpdateProductMapping } from "@/hooks/use-product-mappings";
-import { getChannelListings } from "@/services/product-mapping.service";
 import { useProducts } from "@/hooks/use-products";
 import { useIntegrations } from "@/hooks/use-integrations";
 
+const EMPTY_MAPPINGS: ProductMapping[] = [];
+
 const productMappingSchema = z.object({
   productId: z.string().min(1, "Master Product is required"),
-  integrationId: z.string().min(1, "Integration Store is required"),
-  externalProductId: z.string().optional(),
-  externalVariantId: z.string().optional(),
-  externalSku: z.string().optional(),
-  channelPrice: z.string().optional(),
-  channelQuantity: z.string().optional(),
-  channelCurrency: z.string().optional(),
-  channelCategoryId: z.string().optional(),
-  channelCategoryName: z.string().optional(),
-  categoryQuery: z.string().optional(),
+  channelPrice: z.string().optional().refine(
+    (value) => !value || (Number.isFinite(Number(value)) && Number(value) >= 0),
+    "Enter a valid channel price"
+  ),
+  channelQuantity: z.string().optional().refine(
+    (value) => !value || (Number.isInteger(Number(value)) && Number(value) >= 0),
+    "Enter a valid channel quantity"
+  ),
+  channelCurrency: z.string().optional().refine(
+    (value) => !value?.trim() || /^[a-zA-Z]{3}$/.test(value.trim()),
+    "Currency must be a 3-letter code"
+  ),
   isActive: z.boolean(),
 });
 
 type ProductMappingFormValues = z.infer<typeof productMappingSchema>;
-
-function listingKey(listing: ChannelListing): string {
-  return `${listing.externalProductId}::${listing.externalVariantId || ""}`;
-}
+type ChannelConfiguration = {
+  enabled: boolean;
+  channelPrice: string;
+  channelQuantity: string;
+  channelCurrency: string;
+};
 
 interface ProductMappingFormModalProps {
   isOpen: boolean;
@@ -43,6 +48,15 @@ interface ProductMappingFormModalProps {
   initialData?: ProductMapping | null;
   defaultProductId?: string;
   defaultIntegrationId?: string;
+  existingMappings?: ProductMapping[];
+}
+
+function productIdOf(mapping: ProductMapping): string {
+  return typeof mapping.productId === "object" ? mapping.productId._id : mapping.productId;
+}
+
+function integrationIdOf(mapping: ProductMapping): string {
+  return typeof mapping.integrationId === "object" ? mapping.integrationId._id : mapping.integrationId;
 }
 
 export default function ProductMappingFormModal({
@@ -50,19 +64,19 @@ export default function ProductMappingFormModal({
   onClose,
   initialData,
   defaultProductId,
-  defaultIntegrationId,
+  existingMappings = EMPTY_MAPPINGS,
 }: ProductMappingFormModalProps) {
   const isEditing = Boolean(initialData);
-
   const createMutation = useCreateProductMapping();
   const updateMutation = useUpdateProductMapping();
 
   const { data: productsData, isLoading: isLoadingProducts } = useProducts(1, 100);
   const { data: integrationsData, isLoading: isLoadingIntegrations } = useIntegrations();
-
   const activeIntegrations = (integrationsData?.data || []).filter(
-    (item) => item.isActive && (item.platform === "SHOPIFY" || item.platform === "EBAY")
+    (integration) => integration.isActive && (integration.platform === "SHOPIFY" || integration.platform === "EBAY")
   );
+  const activeIntegrationKey = activeIntegrations.map((integration) => integration._id).join("|");
+
   const masterProduct = initialData && typeof initialData.productId === "object"
     ? initialData.productId
     : productsData?.data?.products.find((product) => product._id === initialData?.productId);
@@ -70,11 +84,9 @@ export default function ProductMappingFormModal({
     ? initialData.integrationId
     : integrationsData?.data.find((integration) => integration._id === initialData?.integrationId);
 
-  const [listings, setListings] = useState<ChannelListing[]>([]);
-  const [listingQuery, setListingQuery] = useState("");
-  const [listingsLoading, setListingsLoading] = useState(false);
-  const [listingsError, setListingsError] = useState("");
-  const [selectedListingKey, setSelectedListingKey] = useState("");
+  const [channelConfigurations, setChannelConfigurations] = useState<Record<string, ChannelConfiguration>>({});
+  const [configurationProductId, setConfigurationProductId] = useState("");
+  const [isCreatingMappings, setIsCreatingMappings] = useState(false);
 
   const {
     register,
@@ -87,176 +99,178 @@ export default function ProductMappingFormModal({
     resolver: zodResolver(productMappingSchema),
     defaultValues: {
       productId: "",
-      integrationId: "",
-      externalProductId: "",
-      externalVariantId: "",
-      externalSku: "",
       channelPrice: "",
       channelQuantity: "",
       channelCurrency: "",
-      channelCategoryId: "",
-      channelCategoryName: "",
-      categoryQuery: "",
       isActive: true,
     },
   });
 
-  const integrationId = watch("integrationId");
+  const selectedProductId = watch("productId");
+  const mappingsForProduct = existingMappings.filter((mapping) => productIdOf(mapping) === selectedProductId);
+  const existingMappingKey = mappingsForProduct.map(integrationIdOf).sort().join("|");
 
   useEffect(() => {
     if (initialData) {
-      const prodId =
-        typeof initialData.productId === "object"
-          ? initialData.productId._id
-          : initialData.productId;
-      const intId =
-        typeof initialData.integrationId === "object"
-          ? initialData.integrationId._id
-          : initialData.integrationId;
-
+      const productId = productIdOf(initialData);
+      const product = typeof initialData.productId === "object" ? initialData.productId : undefined;
       reset({
-        productId: prodId || "",
-        integrationId: intId || "",
-        externalProductId: initialData.externalProductId || "",
-        externalVariantId: initialData.externalVariantId || "",
-        externalSku: initialData.externalSku || "",
-        channelPrice: initialData.channelPrice !== undefined ? String(initialData.channelPrice) : "",
-        channelQuantity: initialData.channelQuantity !== undefined ? String(initialData.channelQuantity) : "",
+        productId,
+        channelPrice: String(initialData.channelPrice ?? product?.price ?? ""),
+        channelQuantity: String(initialData.channelQuantity ?? product?.quantity ?? ""),
         channelCurrency: initialData.channelCurrency || "",
-        channelCategoryId: initialData.channelCategoryId || "",
-        channelCategoryName: initialData.channelCategoryName || "",
-        categoryQuery: initialData.channelCategoryName || "",
         isActive: initialData.isActive ?? true,
       });
     } else {
       reset({
         productId: defaultProductId || "",
-        integrationId: defaultIntegrationId || "",
-        externalProductId: "",
-        externalVariantId: "",
-        externalSku: "",
         channelPrice: "",
         channelQuantity: "",
         channelCurrency: "",
-        channelCategoryId: "",
-        channelCategoryName: "",
-        categoryQuery: "",
         isActive: true,
       });
     }
-  }, [initialData, reset, isOpen, defaultProductId, defaultIntegrationId]);
+  }, [initialData, reset, isOpen, defaultProductId]);
 
   useEffect(() => {
-    if (!isOpen || isEditing || !integrationId) {
-      setListings([]);
-      setListingsError("");
-      setListingQuery("");
+    if (!isOpen || isEditing || !selectedProductId) {
+      setChannelConfigurations({});
+      setConfigurationProductId("");
       return;
     }
-    let cancelled = false;
-    setListingsLoading(true);
-    setListingsError("");
-    setSelectedListingKey("");
-    setListingQuery("");
-    getChannelListings(integrationId)
-      .then((result) => {
-        if (cancelled) return;
-        const payload = result.data;
-        const nextListings = Array.isArray(payload) ? payload : payload?.listings || [];
-        setListings(nextListings);
-        if (!Array.isArray(payload) && payload?.message) setListingsError(payload.message);
-      })
-      .catch((err: unknown) => {
-        if (!cancelled) setListingsError(err instanceof Error ? err.message : "Failed to load channel listings");
-      })
-      .finally(() => {
-        if (!cancelled) setListingsLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [integrationId, isOpen, isEditing]);
+
+    const product = productsData?.data?.products.find((item) => item._id === selectedProductId);
+    if (!product || isLoadingIntegrations) return;
+
+    setChannelConfigurations((current) => {
+      const reuseValues = configurationProductId === selectedProductId;
+      return Object.fromEntries(activeIntegrations.map((integration) => {
+        const existingMapping = mappingsForProduct.find((mapping) => integrationIdOf(mapping) === integration._id);
+        const previous = reuseValues ? current[integration._id] : undefined;
+        return [integration._id, {
+          enabled: !existingMapping && (previous?.enabled ?? true),
+          channelPrice: previous?.channelPrice ?? String(existingMapping?.channelPrice ?? product.price),
+          channelQuantity: previous?.channelQuantity ?? String(existingMapping?.channelQuantity ?? product.quantity),
+          channelCurrency: previous?.channelCurrency ?? existingMapping?.channelCurrency ?? product.currency ?? "",
+        }];
+      }));
+    });
+    setConfigurationProductId(selectedProductId);
+  }, [
+    isOpen,
+    isEditing,
+    isLoadingIntegrations,
+    selectedProductId,
+    productsData,
+    activeIntegrationKey,
+    existingMappingKey,
+  ]);
 
   if (!isOpen) return null;
 
-  const isSubmitting = createMutation.isPending || updateMutation.isPending;
-
-  const listingFields = (values: ProductMappingFormValues) => ({
-    externalProductId: values.externalProductId,
-    externalVariantId: values.externalVariantId,
-    externalSku: values.externalSku || undefined,
-    externalInventoryItemId: selectedListing?.externalInventoryItemId || undefined,
-    channelPrice: values.channelPrice === "" || values.channelPrice === undefined ? undefined : Number(values.channelPrice),
-    channelQuantity: values.channelQuantity === "" || values.channelQuantity === undefined ? undefined : Number(values.channelQuantity),
-    channelCurrency: values.channelCurrency || undefined,
-    channelCategoryId: values.channelCategoryId || undefined,
-    channelCategoryName: values.channelCategoryName || undefined,
-    isActive: values.isActive,
-  });
-
-  const selectedListing = listings.find((listing) => listingKey(listing) === selectedListingKey);
-
-  const applyListing = (listing: ChannelListing) => {
-    setSelectedListingKey(listingKey(listing));
-    setValue("externalProductId", listing.externalProductId || "");
-    setValue("externalVariantId", listing.externalVariantId || "");
-    setValue("externalSku", listing.externalSku || "");
-    setValue("channelPrice", listing.channelPrice !== undefined && listing.channelPrice !== null ? String(listing.channelPrice) : "");
-    setValue("channelQuantity", listing.channelQuantity !== undefined && listing.channelQuantity !== null ? String(listing.channelQuantity) : "");
-    setValue("channelCurrency", listing.channelCurrency || "");
-    setValue("channelCategoryId", listing.channelCategoryId || "");
-    setValue("channelCategoryName", listing.channelCategoryName || "");
+  const isSubmitting = createMutation.isPending || updateMutation.isPending || isCreatingMappings;
+  const updateChannelConfiguration = (integrationId: string, patch: Partial<ChannelConfiguration>) => {
+    setChannelConfigurations((current) => ({
+      ...current,
+      [integrationId]: { ...current[integrationId], ...patch },
+    }));
   };
 
-  const onSubmit = (values: ProductMappingFormValues) => {
-    if (!isEditing && !values.externalProductId) {
-      setListingsError("Select an existing channel listing before connecting it.");
-      return;
-    }
+  const onSubmit = async (values: ProductMappingFormValues) => {
     if (isEditing && initialData) {
+      if (!values.channelPrice?.trim() || !values.channelQuantity?.trim()) {
+        toast.error("Channel price and quantity are required.");
+        return;
+      }
       updateMutation.mutate(
         {
           id: initialData._id,
-          payload: listingFields(values),
+          payload: {
+            channelPrice: Number(values.channelPrice),
+            channelQuantity: Number(values.channelQuantity),
+            channelCurrency: values.channelCurrency?.trim().toUpperCase() || undefined,
+            isActive: values.isActive,
+          },
         },
         {
           onSuccess: () => {
             toast.success("Product mapping updated successfully");
             onClose();
           },
-          onError: (error: Error) => {
-            toast.error(error.message || "Failed to update product mapping");
-          },
+          onError: (error: Error) => toast.error(error.message || "Failed to update product mapping"),
         }
       );
-    } else {
-      createMutation.mutate(
-        {
-          productId: values.productId,
-          integrationId: values.integrationId,
-          ...listingFields(values),
-        },
-        {
-          onSuccess: () => {
-            toast.success("Product mapping created successfully");
-            onClose();
-          },
-          onError: (error: Error) => {
-            toast.error(error.message || "Failed to create product mapping");
-          },
-        }
-      );
+      return;
     }
+
+    const configuredIntegrations = activeIntegrations.filter((integration) => {
+      const config = channelConfigurations[integration._id];
+      return config?.enabled && !mappingsForProduct.some((mapping) => integrationIdOf(mapping) === integration._id);
+    });
+
+    if (!configuredIntegrations.length) {
+      toast.error("Enable at least one connected channel to add a mapping.");
+      return;
+    }
+
+    const invalidIntegration = configuredIntegrations.find((integration) => {
+      const config = channelConfigurations[integration._id];
+      const price = Number(config.channelPrice);
+      const quantity = Number(config.channelQuantity);
+      const currencyValid = !config.channelCurrency.trim() || /^[a-zA-Z]{3}$/.test(config.channelCurrency.trim());
+      return !config.channelPrice.trim() || !Number.isFinite(price) || price < 0 ||
+        !config.channelQuantity.trim() || !Number.isInteger(quantity) || quantity < 0 || !currencyValid;
+    });
+
+    if (invalidIntegration) {
+      toast.error(`Enter valid price, quantity, and currency for ${invalidIntegration.platform}.`);
+      return;
+    }
+
+    setIsCreatingMappings(true);
+    const results = await Promise.allSettled(configuredIntegrations.map((integration) => {
+      const config = channelConfigurations[integration._id];
+      return createMutation.mutateAsync({
+        productId: values.productId,
+        integrationId: integration._id,
+        channelPrice: Number(config.channelPrice),
+        channelQuantity: Number(config.channelQuantity),
+        channelCurrency: config.channelCurrency.trim().toUpperCase() || undefined,
+        isActive: true,
+      });
+    }));
+    setIsCreatingMappings(false);
+
+    const succeededIntegrationIds = results.flatMap((result, index) =>
+      result.status === "fulfilled" ? [configuredIntegrations[index]._id] : []
+    );
+    const failures = results.filter((result) => result.status === "rejected");
+    if (succeededIntegrationIds.length) {
+      setChannelConfigurations((current) => Object.fromEntries(
+        Object.entries(current).map(([integrationId, config]) => [
+          integrationId,
+          succeededIntegrationIds.includes(integrationId) ? { ...config, enabled: false } : config,
+        ])
+      ));
+    }
+    if (failures.length) {
+      const reason = failures[0].reason;
+      const message = reason instanceof Error ? reason.message : String(reason);
+      toast.error(`${succeededIntegrationIds.length} mapping(s) added; ${failures.length} could not be added. ${message}`);
+      return;
+    }
+
+    toast.success(`${succeededIntegrationIds.length} product mapping(s) added.`);
+    onClose();
   };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4 overflow-y-auto">
-      <div className="relative w-full max-w-xl rounded-2xl bg-white p-6 shadow-2xl my-8">
+      <div className="relative w-full max-w-2xl rounded-2xl bg-white p-6 shadow-2xl my-8 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between border-b pb-4">
           <h2 className="text-xl font-bold text-slate-900">
-            {isEditing ? "Edit channel connection" : "Connect Existing Listing"}
+            {isEditing ? "Edit Product Mapping" : "Add Product Mapping"}
           </h2>
-
           <button
             onClick={onClose}
             className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
@@ -266,7 +280,7 @@ export default function ProductMappingFormModal({
         </div>
 
         <form onSubmit={handleSubmit(onSubmit)} className="mt-6 space-y-4">
-          {isEditing && initialData && (
+          {isEditing && initialData ? (
             <div className="grid gap-3 rounded-lg border bg-slate-50 p-3 text-sm sm:grid-cols-2">
               <div>
                 <p className="text-xs text-slate-500">Master Product</p>
@@ -275,190 +289,162 @@ export default function ProductMappingFormModal({
                 </p>
               </div>
               <div>
-                <p className="text-xs text-slate-500">Channel</p>
+                <p className="text-xs text-slate-500">Sales Channel</p>
                 <p className="font-medium text-slate-900">
                   {channelIntegration ? `${channelIntegration.platform} — ${channelIntegration.storeName}` : "Connected store"}
                 </p>
               </div>
-              <div className="sm:col-span-2">
-                <p className="text-xs text-slate-500">Channel Listing / External ID</p>
-                <p className="break-all font-mono text-xs text-slate-900">
-                  {watch("externalProductId") || "--"}
-                  {watch("externalVariantId") ? ` / ${watch("externalVariantId")}` : ""}
-                </p>
-              </div>
             </div>
-          )}
-
-          {!isEditing && !defaultProductId && (
+          ) : !defaultProductId ? (
             <div>
-              <Label htmlFor="productId">
-                Master Product {isEditing && <span className="text-xs text-slate-400">(Read-only)</span>}
-              </Label>
-
+              <Label htmlFor="productId">Master Product</Label>
               {isLoadingProducts ? (
-                <div className="mt-1 flex h-10 items-center px-3 text-sm text-slate-400">
-                  Loading products...
-                </div>
+                <div className="mt-1 flex h-10 items-center px-3 text-sm text-slate-400">Loading products...</div>
               ) : (
                 <select
                   id="productId"
-                  disabled={isEditing}
-                  className={`mt-1 flex h-10 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-600 ${
-                    isEditing ? "bg-slate-100 cursor-not-allowed text-slate-500" : ""
-                  }`}
+                  className="mt-1 flex h-10 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-600"
                   {...register("productId")}
                 >
                   <option value="">-- Select Master Product --</option>
-                  {productsData?.data?.products?.map((prod) => (
-                    <option key={prod._id} value={prod._id}>
-                      {prod.sku} — {prod.title}
-                    </option>
+                  {productsData?.data?.products?.map((product) => (
+                    <option key={product._id} value={product._id}>{product.sku} — {product.title}</option>
                   ))}
                 </select>
               )}
-
-              {errors.productId && (
-                <p className="mt-1 text-xs text-red-500">{errors.productId.message}</p>
-              )}
+              {errors.productId && <p className="mt-1 text-xs text-red-500">{errors.productId.message}</p>}
             </div>
-          )}
+          ) : null}
 
-          {!isEditing && !defaultIntegrationId && (
-            <div>
-              <Label htmlFor="integrationId">
-                Integration Channel {isEditing && <span className="text-xs text-slate-400">(Read-only)</span>}
-              </Label>
-
+          {isEditing ? (
+            <>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div>
+                  <Label htmlFor="channelPrice">Channel Price</Label>
+                  <Input id="channelPrice" type="number" min="0" step="0.01" {...register("channelPrice")} />
+                  {errors.channelPrice && <p className="mt-1 text-xs text-red-500">{errors.channelPrice.message}</p>}
+                </div>
+                <div>
+                  <Label htmlFor="channelQuantity">Channel Quantity</Label>
+                  <Input id="channelQuantity" type="number" min="0" step="1" {...register("channelQuantity")} />
+                  {errors.channelQuantity && <p className="mt-1 text-xs text-red-500">{errors.channelQuantity.message}</p>}
+                </div>
+                <div>
+                  <Label htmlFor="channelCurrency">Currency</Label>
+                  <Input id="channelCurrency" maxLength={3} placeholder="USD" {...register("channelCurrency")} />
+                  {errors.channelCurrency && <p className="mt-1 text-xs text-red-500">{errors.channelCurrency.message}</p>}
+                </div>
+              </div>
+              <div className="flex items-center gap-3 pt-2">
+                <input
+                  id="isActive"
+                  type="checkbox"
+                  className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-600"
+                  {...register("isActive")}
+                />
+                <Label htmlFor="isActive" className="cursor-pointer">Enable Sync</Label>
+              </div>
+            </>
+          ) : (
+            <div className="space-y-4">
               {isLoadingIntegrations ? (
-                <div className="mt-1 flex h-10 items-center px-3 text-sm text-slate-400">
-                  Loading integrations...
+                <div className="py-4 text-sm text-slate-400">Loading connected channels...</div>
+              ) : activeIntegrations.length === 0 ? (
+                <div className="rounded-lg border border-dashed p-4 text-sm text-slate-500">
+                  Connect a Shopify or eBay account before adding product mappings.
+                </div>
+              ) : !selectedProductId ? (
+                <div className="rounded-lg border border-dashed p-4 text-sm text-slate-500">
+                  Select a Master Product to configure its connected channels.
                 </div>
               ) : (
-                <select
-                  id="integrationId"
-                  disabled={isEditing}
-                  className={`mt-1 flex h-10 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-600 ${
-                    isEditing ? "bg-slate-100 cursor-not-allowed text-slate-500" : ""
-                  }`}
-                  {...register("integrationId")}
-                >
-                  <option value="">-- Select Integration Channel --</option>
-                  {activeIntegrations.map((store) => (
-                    <option key={store._id} value={store._id}>
-                      {store.platform} — {store.storeName}
-                    </option>
-                  ))}
-                </select>
-              )}
+                activeIntegrations.map((integration) => {
+                  const configuration = channelConfigurations[integration._id];
+                  const existingMapping = mappingsForProduct.find((mapping) => integrationIdOf(mapping) === integration._id);
+                  if (!configuration) return null;
 
-              {errors.integrationId && (
-                <p className="mt-1 text-xs text-red-500">
-                  {errors.integrationId.message}
-                </p>
+                  const channelName = integration.platform === "SHOPIFY" ? "Shopify" : "eBay";
+                  return (
+                    <section key={integration._id} className="rounded-lg border p-4">
+                      <div className="mb-3">
+                        <h3 className="font-semibold text-slate-900">{integration.platform}</h3>
+                        <p className="text-sm text-slate-500">Store: {integration.storeName}</p>
+                      </div>
+                      {existingMapping ? (
+                        <p className="text-sm text-slate-600">
+                          This Master Product already has a {channelName} mapping for this store. Edit it from the Channel Mappings table.
+                        </p>
+                      ) : (
+                        <>
+                          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                            <div>
+                              <Label htmlFor={`channelPrice-${integration._id}`}>Channel Price</Label>
+                              <Input
+                                id={`channelPrice-${integration._id}`}
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                value={configuration.channelPrice}
+                                onChange={(event) => updateChannelConfiguration(integration._id, { channelPrice: event.target.value })}
+                              />
+                            </div>
+                            <div>
+                              <Label htmlFor={`channelQuantity-${integration._id}`}>Channel Quantity</Label>
+                              <Input
+                                id={`channelQuantity-${integration._id}`}
+                                type="number"
+                                min="0"
+                                step="1"
+                                value={configuration.channelQuantity}
+                                onChange={(event) => updateChannelConfiguration(integration._id, { channelQuantity: event.target.value })}
+                              />
+                            </div>
+                            <div>
+                              <Label htmlFor={`channelCurrency-${integration._id}`}>Currency</Label>
+                              <Input
+                                id={`channelCurrency-${integration._id}`}
+                                maxLength={3}
+                                placeholder="USD"
+                                value={configuration.channelCurrency}
+                                onChange={(event) => updateChannelConfiguration(integration._id, { channelCurrency: event.target.value })}
+                              />
+                            </div>
+                          </div>
+                          <div className="mt-3 flex items-center gap-3">
+                            <input
+                              id={`enableSync-${integration._id}`}
+                              type="checkbox"
+                              checked={configuration.enabled}
+                              onChange={(event) => updateChannelConfiguration(integration._id, { enabled: event.target.checked })}
+                              className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-600"
+                            />
+                            <Label htmlFor={`enableSync-${integration._id}`} className="cursor-pointer">
+                              Enable {channelName} Sync
+                            </Label>
+                          </div>
+                        </>
+                      )}
+                    </section>
+                  );
+                })
               )}
             </div>
           )}
-
-          {!isEditing && (
-            <div>
-              <Label htmlFor="channelListing">Existing Channel Listing</Label>
-              <Input
-                className="mt-1"
-                value={listingQuery}
-                onChange={(event) => setListingQuery(event.target.value)}
-                placeholder="Search by title, SKU, or external ID"
-                disabled={!integrationId || listingsLoading}
-              />
-              {listingsLoading ? (
-                <div className="mt-1 flex h-10 items-center px-3 text-sm text-slate-400">Loading existing listings...</div>
-              ) : (
-                <select
-                  id="channelListing"
-                  className="mt-1 flex h-10 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm"
-                  value={selectedListingKey}
-                  onChange={(event) => {
-                    const listing = listings.find((item) => listingKey(item) === event.target.value);
-                    if (listing) applyListing(listing);
-                  }}
-                >
-                  <option value="">-- Select an existing channel listing --</option>
-                  {listings
-                    .filter((listing) => {
-                      const query = listingQuery.trim().toLowerCase();
-                      if (!query) return true;
-                      return [listing.title, listing.externalSku, listing.externalProductId, listing.externalVariantId]
-                        .filter(Boolean)
-                        .some((value) => String(value).toLowerCase().includes(query));
-                    })
-                    .map((listing) => (
-                    <option key={listingKey(listing)} value={listingKey(listing)}>
-                      {listing.title} — {listing.externalSku || listing.externalProductId}
-                    </option>
-                  ))}
-                </select>
-              )}
-              {listingsError && <p className="mt-1 text-xs text-red-500">{listingsError}</p>}
-              {!listingsLoading && integrationId && listings.length === 0 && (
-                <p className="mt-1 text-xs text-slate-500">No existing listings found on this channel.</p>
-              )}
-            </div>
-          )}
-
-          {selectedListing && (
-            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700 space-y-1">
-              <div>Product ID: {watch("externalProductId") || "--"}</div>
-              <div>Variant ID: {watch("externalVariantId") || "--"}</div>
-            </div>
-          )}
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <Label htmlFor="externalSku">Channel SKU</Label>
-              <Input id="externalSku" {...register("externalSku")} />
-            </div>
-            <div>
-              <Label htmlFor="channelPrice">Channel price</Label>
-              <Input id="channelPrice" type="number" min="0" step="0.01" {...register("channelPrice")} />
-            </div>
-            <div>
-              <Label htmlFor="channelQuantity">Channel quantity</Label>
-              <Input id="channelQuantity" type="number" min="0" step="1" {...register("channelQuantity")} />
-            </div>
-            <div>
-              <Label htmlFor="channelCurrency">Currency</Label>
-              <Input id="channelCurrency" maxLength={3} placeholder="USD" {...register("channelCurrency")} />
-            </div>
-          </div>
-
-          {/* Active Status */}
-          <div className="flex items-center gap-3 pt-2">
-            <input
-              id="isActive"
-              type="checkbox"
-              className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-600"
-              {...register("isActive")}
-            />
-            <Label htmlFor="isActive" className="cursor-pointer">
-              Enable Sync for this Channel Mapping
-            </Label>
-          </div>
 
           <div className="flex items-center justify-end gap-3 border-t pt-4">
             <Button type="button" variant="outline" onClick={onClose}>
               Cancel
             </Button>
-
             <Button type="submit" disabled={isSubmitting}>
               {isSubmitting ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Saving...
+                  {isCreatingMappings ? "Adding mappings..." : "Saving..."}
                 </>
               ) : isEditing ? (
-                "Save"
+                "Save Mapping"
               ) : (
-                "Connect Existing Listing"
+                "Add Mapping"
               )}
             </Button>
           </div>

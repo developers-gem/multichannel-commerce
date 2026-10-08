@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { X, Send, Layers, CheckCircle2, Loader2, AlertCircle } from "lucide-react";
+import { X, Send, Loader2, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -9,6 +9,13 @@ import { Product } from "@/types/product";
 import { useIntegrations } from "@/hooks/use-integrations";
 import { useProductMappings } from "@/hooks/use-product-mappings";
 import { usePublishProductToChannels } from "@/hooks/use-products";
+import { Integration } from "@/types/integration";
+
+interface ChannelPublishValues {
+  selected: boolean;
+  price: string;
+  quantity: string;
+}
 
 interface ProductPublishModalProps {
   isOpen: boolean;
@@ -25,37 +32,67 @@ export default function ProductPublishModal({
   const { data: mappingsData, isLoading: isLoadingMappings } = useProductMappings(product?._id);
 
   const publishMutation = usePublishProductToChannels();
-  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [channelValues, setChannelValues] = useState<Record<string, ChannelPublishValues>>({});
 
-  const integrations = (integrationsData?.data || []).filter((i: any) => i.isActive);
+  const integrations = (integrationsData?.data || []).filter(
+    (integration) => integration.isActive && (integration.platform === "SHOPIFY" || integration.platform === "EBAY")
+  );
   const mappings = mappingsData?.data || [];
-
-  const existingIntegrationIds = new Set(mappings.map((m: any) => m.integrationId?._id || m.integrationId));
+  const existingIntegrationIds = new Set(
+    mappings.map((mapping) => typeof mapping.integrationId === "object" ? mapping.integrationId._id : mapping.integrationId)
+  );
 
   useEffect(() => {
-    if (isOpen && integrations.length > 0) {
-      // Pre-check all active integrations or existing mappings
-      const initialSelected = integrations.map((i: any) => i._id);
-      setSelectedIds(initialSelected);
+    if (isOpen && product && !isLoadingIntegrations && !isLoadingMappings) {
+      setChannelValues(Object.fromEntries(integrations.map((integration) => [integration._id, {
+        selected: false,
+        price: String(product.price ?? 0),
+        quantity: String(product.quantity ?? 0),
+      }])));
     }
-  }, [isOpen, integrationsData]);
+  }, [isOpen, product?._id, isLoadingIntegrations, isLoadingMappings]);
 
   if (!isOpen || !product) return null;
 
-  const toggleSelect = (id: string) => {
-    setSelectedIds((prev) =>
-      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
-    );
+  const updateChannel = (integrationId: string, patch: Partial<ChannelPublishValues>) => {
+    setChannelValues((current) => ({
+      ...current,
+      [integrationId]: { ...current[integrationId], ...patch },
+    }));
   };
 
   const handlePublish = () => {
-    if (selectedIds.length === 0) {
-      toast.error("Please select at least one sales channel integration to publish.");
+    const selectedIntegrations = integrations.filter(
+      (integration) => channelValues[integration._id]?.selected && !existingIntegrationIds.has(integration._id)
+    );
+    if (selectedIntegrations.length === 0) {
+      toast.error("Select at least one channel that is not already mapped.");
       return;
     }
 
+    const invalidIntegration = selectedIntegrations.find((integration) => {
+      const values = channelValues[integration._id];
+      const price = Number(values.price);
+      const quantity = Number(values.quantity);
+      return !Number.isFinite(price) || price < 0 || !Number.isFinite(quantity) || quantity < 0;
+    });
+    if (invalidIntegration) {
+      toast.error(`Enter a valid price and quantity for ${invalidIntegration.storeName}.`);
+      return;
+    }
+
+    const channels = selectedIntegrations.map((integration) => {
+      const values = channelValues[integration._id];
+      return {
+        integrationId: integration._id,
+        channelPrice: Number(values.price),
+        channelQuantity: Number(values.quantity),
+        channelCurrency: product.currency || "USD",
+      };
+    });
+
     publishMutation.mutate(
-      { id: product._id, integrationIds: selectedIds },
+      { id: product._id, channels },
       {
         onSuccess: (res) => {
           toast.success(res.message || "Publishing jobs enqueued for selected sales channels");
@@ -74,12 +111,9 @@ export default function ProductPublishModal({
         {/* Header */}
         <div className="flex items-start justify-between border-b pb-4">
           <div>
-            <div className="flex items-center gap-2">
-              <span className="font-mono text-xs font-bold uppercase text-indigo-600 bg-indigo-50 border border-indigo-100 rounded px-2 py-0.5">
-                SKU: {product.sku}
-              </span>
-            </div>
-            <h2 className="text-xl font-bold text-slate-900 mt-1">Publish to Channels</h2>
+            <p className="text-xs font-semibold uppercase text-slate-500">Master Product</p>
+            <h2 className="mt-1 text-xl font-bold text-slate-900">{product.title}</h2>
+            <p className="font-mono text-sm text-slate-500">SKU: {product.sku}</p>
           </div>
 
           <button
@@ -91,7 +125,7 @@ export default function ProductPublishModal({
         </div>
 
         <p className="mt-3 text-sm text-slate-500">
-          Select connected sales channel accounts to publish or update this Master Product listing.
+          Set an independent price and quantity for each channel. Publishing creates channel mappings for this Master Product.
         </p>
 
         {/* Integration Selection Checklist */}
@@ -107,44 +141,68 @@ export default function ProductPublishModal({
               <AlertCircle className="h-6 w-6 text-amber-500 mx-auto mb-2" />
               <p className="text-sm font-semibold text-slate-700">No Active Integrations Available</p>
               <p className="text-xs text-slate-500 mt-1">
-                Please connect an active Shopify, eBay, or Custom Website channel on the Integrations page first.
+                Connect an active Shopify or eBay account on the Integrations page first.
               </p>
             </div>
           ) : (
-            integrations.map((item: any) => {
-              const isChecked = selectedIds.includes(item._id);
+            integrations.map((item: Integration) => {
+              const values = channelValues[item._id] || { selected: false, price: "", quantity: "" };
               const isAlreadyMapped = existingIntegrationIds.has(item._id);
 
               return (
-                <label
+                <div
                   key={item._id}
-                  onClick={() => toggleSelect(item._id)}
-                  className={`flex items-center justify-between rounded-xl border p-3.5 cursor-pointer transition-all ${
-                    isChecked
-                      ? "border-indigo-600 bg-indigo-50/40 shadow-sm"
-                      : "border-slate-200 bg-white hover:border-slate-300"
+                  className={`rounded-xl border p-3.5 transition-colors ${
+                    values.selected ? "border-indigo-600 bg-indigo-50/40" : "border-slate-200 bg-white"
                   }`}
                 >
-                  <div className="flex items-center gap-3">
+                  <label className={`flex items-center gap-3 ${isAlreadyMapped ? "cursor-not-allowed" : "cursor-pointer"}`}>
                     <input
                       type="checkbox"
-                      checked={isChecked}
-                      onChange={() => {}}
+                      checked={values.selected}
+                      disabled={isAlreadyMapped || publishMutation.isPending}
+                      onChange={(event) => updateChannel(item._id, { selected: event.target.checked })}
                       className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-600"
                     />
-                    <div>
-                      <div className="font-semibold text-slate-900 text-sm">{item.storeName}</div>
-                      <div className="text-xs text-slate-500 font-mono">{item.platform} • {item.storeUrl}</div>
+                    <div className="min-w-0">
+                      <div className="font-semibold text-slate-900 text-sm">{item.platform} — {item.storeName}</div>
+                      <div className="truncate text-xs text-slate-500">{item.storeUrl}</div>
                     </div>
-                  </div>
-
+                  </label>
                   {isAlreadyMapped && (
-                    <span className="inline-flex items-center gap-1 rounded-md bg-green-50 text-green-700 border border-green-200 text-xs font-semibold px-2 py-0.5">
-                      <CheckCircle2 className="h-3 w-3" />
-                      Mapped
+                    <span className="mt-2 inline-block text-xs font-medium text-slate-500">
+                      Already mapped. Manage its channel values from the product detail page.
                     </span>
                   )}
-                </label>
+                  {values.selected && !isAlreadyMapped && (
+                    <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                      <div>
+                        <label htmlFor={`price-${item._id}`} className="mb-1 block text-xs font-medium text-slate-600">Channel Price</label>
+                        <input
+                          id={`price-${item._id}`}
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={values.price}
+                          onChange={(event) => updateChannel(item._id, { price: event.target.value })}
+                          className="flex h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm"
+                        />
+                      </div>
+                      <div>
+                        <label htmlFor={`quantity-${item._id}`} className="mb-1 block text-xs font-medium text-slate-600">Channel Quantity</label>
+                        <input
+                          id={`quantity-${item._id}`}
+                          type="number"
+                          min="0"
+                          step="1"
+                          value={values.quantity}
+                          onChange={(event) => updateChannel(item._id, { quantity: event.target.value })}
+                          className="flex h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm"
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
               );
             })
           )}
@@ -158,7 +216,7 @@ export default function ProductPublishModal({
 
           <Button
             onClick={handlePublish}
-            disabled={publishMutation.isPending || integrations.length === 0}
+            disabled={publishMutation.isPending || !integrations.some((integration) => channelValues[integration._id]?.selected && !existingIntegrationIds.has(integration._id))}
             className="bg-indigo-600 hover:bg-indigo-700 text-white gap-2"
           >
             {publishMutation.isPending ? (

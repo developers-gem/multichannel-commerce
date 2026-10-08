@@ -46,7 +46,7 @@ export default function ProductMappingTable({
         </div>
         <h3 className="text-lg font-bold text-slate-800">No channel mappings yet</h3>
         <p className="mt-1 max-w-sm text-sm text-slate-500">
-          Publish a master product, or link a listing that already exists on Shopify or eBay.
+          Add a mapping to configure independent prices and quantities for a Master Product on Shopify or eBay.
         </p>
       </div>
     );

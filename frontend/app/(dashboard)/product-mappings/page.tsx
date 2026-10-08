@@ -84,13 +84,13 @@ export default function ProductMappingsPage() {
             Channel Mappings
           </h1>
           <p className="mt-1 text-slate-500">
-            Manage the connection between each Master Product and its Shopify or eBay listing. Connect existing listings here; publish new listings from a product detail page.
+            Manage product mappings between your Master Products and connected sales channels.
           </p>
         </div>
 
         <Button onClick={handleOpenAddModal} className="shrink-0">
           <Plus className="mr-2 h-4 w-4" />
-          Connect Existing Listing
+          Add Product Mapping
         </Button>
       </div>
 
@@ -129,6 +129,7 @@ export default function ProductMappingsPage() {
         isOpen={isFormModalOpen}
         onClose={() => setIsFormModalOpen(false)}
         initialData={selectedMapping}
+        existingMappings={allMappings}
       />
 
       {/* Delete Dialog */}

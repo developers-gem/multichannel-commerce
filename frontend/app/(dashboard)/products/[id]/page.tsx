@@ -7,13 +7,14 @@ import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { useProduct, usePublishProductToChannels } from "@/hooks/use-products";
+import { useProduct } from "@/hooks/use-products";
 import { useIntegrations } from "@/hooks/use-integrations";
 import { useCreateProductMapping, useProductMappings, useUpdateProductMapping } from "@/hooks/use-product-mappings";
 import { useTriggerSync } from "@/hooks/use-sync";
 import { suggestEbayCategories, EbayCategorySuggestion } from "@/services/integration.service";
 import { getChannelListings } from "@/services/product-mapping.service";
 import ProductMappingFormModal from "@/components/product-mappings/product-mapping-form-modal";
+import ProductPublishModal from "@/components/products/product-publish-modal";
 import { ChannelListing, ProductMapping } from "@/types/product-mapping";
 import { Integration } from "@/types/integration";
 import { Product } from "@/types/product";
@@ -48,6 +49,7 @@ function formatCurrency(value: number, currency?: string): string {
 export default function ProductDetailPage() {
   const params = useParams<{ id: string }>();
   const productId = String(params.id || "");
+  const [isPublishModalOpen, setIsPublishModalOpen] = useState(false);
   const { data: productResponse, isLoading, isError, error } = useProduct(productId);
   const { data: integrationsData } = useIntegrations();
   const { data: mappingsData } = useProductMappings(productId);
@@ -115,11 +117,17 @@ export default function ProductDetailPage() {
       </section>
 
       <section className="space-y-4">
-        <div>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <div>
           <h2 className="text-xl font-semibold text-slate-900">Channels</h2>
           <p className="text-sm text-slate-500">
-            Connect an existing listing or publish a new one. Each store keeps its own price and quantity.
+            Publish new listings with channel-specific values, or connect listings that already exist.
           </p>
+          </div>
+          <Button onClick={() => setIsPublishModalOpen(true)}>
+            <span className="mr-2">+</span>
+            Publish to Channels
+          </Button>
         </div>
         {integrations.length === 0 && (
           <div className="rounded-2xl border bg-white p-5 text-sm text-slate-500">
@@ -135,6 +143,11 @@ export default function ProductDetailPage() {
           />
         ))}
       </section>
+      <ProductPublishModal
+        isOpen={isPublishModalOpen}
+        onClose={() => setIsPublishModalOpen(false)}
+        product={product}
+      />
     </div>
   );
 }
@@ -148,11 +161,10 @@ function ChannelStoreCard({
   integration: Integration;
   mapping?: ProductMapping;
 }) {
-  const publishMutation = usePublishProductToChannels();
   const updateMapping = useUpdateProductMapping();
   const createMapping = useCreateProductMapping();
   const triggerSync = useTriggerSync();
-  const [mode, setMode] = useState<"idle" | "connect" | "publish">("idle");
+  const [mode, setMode] = useState<"idle" | "connect">("idle");
   const [isMappingModalOpen, setIsMappingModalOpen] = useState(false);
   const [price, setPrice] = useState(mapping?.channelPrice !== undefined ? String(mapping.channelPrice) : "");
   const [quantity, setQuantity] = useState(mapping?.channelQuantity !== undefined ? String(mapping.channelQuantity) : "");
@@ -218,27 +230,6 @@ function ChannelStoreCard({
           toast.success(`${label} listing connected. Its price and quantity stay on this store.`);
         },
         onError: (err: Error) => toast.error(err.message || "Failed to connect listing"),
-      }
-    );
-  };
-
-  const publishNew = () => {
-    publishMutation.mutate(
-      {
-        id: product._id,
-        channels: [{
-          integrationId: integration._id,
-          channelPrice: price === "" ? product.price : Number(price),
-          channelQuantity: quantity === "" ? product.quantity : Number(quantity),
-          channelCurrency: product.currency || "USD",
-        }],
-      },
-      {
-        onSuccess: () => {
-          setMode("idle");
-          toast.success(`Publish queued for ${label}.`);
-        },
-        onError: (err: Error) => toast.error(err.message || `Failed to publish to ${label}`),
       }
     );
   };
@@ -357,16 +348,6 @@ function ChannelStoreCard({
           {mode === "idle" && (
             <div className="flex flex-wrap gap-2">
               <Button onClick={openConnect}>Connect Existing {label} {listingNoun}</Button>
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setMode("publish");
-                  setPrice(product.price !== undefined ? String(product.price) : "");
-                  setQuantity(product.quantity !== undefined ? String(product.quantity) : "");
-                }}
-              >
-                Publish New {label} {listingNoun}
-              </Button>
             </div>
           )}
 
@@ -378,16 +359,6 @@ function ChannelStoreCard({
               {!listingsLoading && listings.length === 0 && (
                 <div className="space-y-2">
                   <p className="text-sm text-slate-600">No existing listings found on this channel.</p>
-                  <Button
-                    variant="outline"
-                    onClick={() => {
-                      setMode("publish");
-                      setPrice(product.price !== undefined ? String(product.price) : "");
-                      setQuantity(product.quantity !== undefined ? String(product.quantity) : "");
-                    }}
-                  >
-                    Publish New Listing
-                  </Button>
                 </div>
               )}
               {!listingsLoading && visibleListings.length > 0 && (
@@ -420,19 +391,6 @@ function ChannelStoreCard({
             </div>
           )}
 
-          {mode === "publish" && (
-            <div className="space-y-3">
-              <p className="text-sm text-slate-600">Publish a new {label} listing from this master product.</p>
-              <div className="grid max-w-md grid-cols-2 gap-3">
-                <Input type="number" min="0" step="0.01" value={price} onChange={(event) => setPrice(event.target.value)} placeholder="Channel price" />
-                <Input type="number" min="0" step="1" value={quantity} onChange={(event) => setQuantity(event.target.value)} placeholder="Channel quantity" />
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <Button onClick={publishNew} disabled={publishMutation.isPending}>Publish New {label} {listingNoun}</Button>
-                <Button variant="outline" onClick={() => setMode("idle")}>Cancel</Button>
-              </div>
-            </div>
-          )}
         </div>
       )}
       {mapping && (
