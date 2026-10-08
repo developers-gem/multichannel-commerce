@@ -107,10 +107,9 @@ export default function SyncLogTable({
               : "—";
 
             const mappingIdStr =
-              typeof log.productMappingId === "object"
-                ? log.productMappingId._id
-                : log.productMappingId;
-
+  typeof log.productMappingId === "object" && log.productMappingId !== null
+    ? log.productMappingId._id
+    : log.productMappingId;
             return (
               <tr
                 key={log._id}
