@@ -12,6 +12,7 @@ import { HTTP_STATUS } from "../../shared/constants/http-status.constants";
 import { SYNC_MESSAGES } from "./sync.messages";
 import { env } from "../../config/env";
 import { MarketplaceConnectorFactory } from "./connectors/connector.factory";
+import { resolveChannelPrice, resolveChannelQuantity } from "./channel-values";
 
 class SyncService {
   private async executeDirectMarketplaceSync(
@@ -45,9 +46,9 @@ class SyncService {
       brand: product.brand,
       category: product.category,
       images: product.images,
-      price: product.price,
-      currency: product.currency || undefined,
-      quantity: product.quantity,
+      price: resolveChannelPrice(mapping.channelPrice, product.price),
+      currency: mapping.channelCurrency || product.currency || undefined,
+      quantity: resolveChannelQuantity(mapping.channelQuantity, product.quantity),
       shippingCharge: product.shippingCharge,
       status: product.status,
       externalProductId: mapping.externalProductId,

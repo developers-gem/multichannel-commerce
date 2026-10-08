@@ -319,7 +319,7 @@ class ProductService {
   /**
    * Create Product & Auto-Publish to Selected Integration Channel
    */
-  async create(data: CreateProductDto & { integrationId?: string }, options: ProductServiceOptions = {}) {
+  async create(data: CreateProductDto, options: ProductServiceOptions = {}) {
     const existingProduct = await Product.findOne({
       sku: data.sku,
       isDeleted: false,
@@ -332,27 +332,12 @@ class ProductService {
       );
     }
 
-    // Extract integrationId from payload if provided by the form modal
-    const { integrationId, ...productData } = data as any;
-
-    const product = await Product.create({ 
-      ...productData, 
-      ...(options.userId ? { userId: options.userId } : {}) 
+    const product = await Product.create({
+      ...data,
+      ...(options.userId ? { userId: options.userId } : {}),
     });
 
-    // If a target store/integration was selected in the form, publish directly to it!
-    if (integrationId && !options.skipSync) {
-      try {
-        await this.publishToChannels(
-          product._id.toString(),
-          [integrationId],
-          options.userId
-        );
-      } catch (pubErr) {
-        console.error("[ProductService] Auto-publish on create failed:", pubErr);
-      }
-    } else if (!options.skipSync) {
-      // Fallback for general creation without a specific single integration dropdown
+    if (!options.skipSync) {
       await syncService.enqueueSyncJobsForProduct(product._id.toString(), SyncJobAction.CREATE, options.userId);
     }
 
