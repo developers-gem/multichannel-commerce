@@ -12,28 +12,27 @@ import RecentActivity from "@/components/dashboard/recent-activity";
 import QuickActions from "@/components/dashboard/quick-actions";
 import IntegrationStatus from "@/components/dashboard/integration-status";
 import { useIntegrations } from "@/hooks/use-integrations";
-    import { formatDistanceToNow } from "date-fns";
+import { useSyncDashboardSummary, useSyncLogs } from "@/hooks/use-sync";
+import { formatDistanceToNow } from "date-fns";
 
 
 export default function DashboardPage() {
 
-    const { data } = useIntegrations();
+        const { data: integrationsResponse } = useIntegrations();
+        const { data: summaryResponse } = useSyncDashboardSummary();
+        const { data: latestSyncResponse } = useSyncLogs({ limit: 1, status: "COMPLETED" });
 
-    const totalIntegrations = data?.data.length ?? 0;
-
-    const activeIntegrations =
-        data?.data.filter((item) => item.isActive).length ?? 0;
-
-
-const lastSync =
-  data?.data[0]?.updatedAt
-    ? formatDistanceToNow(
-        new Date(data.data[0].updatedAt),
-        {
-          addSuffix: true,
-        }
-      )
-    : "--";
+        const marketplaceIntegrations = (integrationsResponse?.data || []).filter(
+                (integration) => integration.platform === "SHOPIFY" || integration.platform === "EBAY"
+        );
+        const activeIntegrations = marketplaceIntegrations.filter((integration) => integration.isActive).length;
+        const summary = summaryResponse?.data?.summaryMetrics;
+        const latestSync = latestSyncResponse?.data?.logs?.[0];
+        const lastSyncDate = latestSync?.completedAt || latestSync?.updatedAt || latestSync?.createdAt;
+        const lastSync = lastSyncDate
+                ? formatDistanceToNow(new Date(lastSyncDate), { addSuffix: true })
+                : "--";
+        const pendingSync = (summary?.pendingSyncJobs ?? 0) + (summary?.processingSyncJobs ?? 0);
 
 
     return (
@@ -54,25 +53,25 @@ const lastSync =
 
             <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-4">
                 <StatCard
-                    title="Integrations"
+                    title="Connected Channels"
                     value={activeIntegrations}
-                    subtitle={`${totalIntegrations} Total`}
+                    subtitle="Shopify and eBay"
                     icon={Link2}
                     color="bg-blue-100 text-blue-600"
                 />
 
                 <StatCard
-                    title="Products"
-                    value={520}
-                    subtitle="Active"
+                    title="Master Products"
+                    value={summary?.totalMasterProducts ?? "--"}
+                    subtitle="In catalog"
                     icon={Package}
                     color="bg-green-100 text-green-600"
                 />
 
                 <StatCard
                     title="Pending Sync"
-                    value={18}
-                    subtitle="Needs Attention"
+                    value={pendingSync}
+                    subtitle={`${summary?.pendingSyncJobs ?? 0} pending · ${summary?.processingSyncJobs ?? 0} processing`}
                     icon={RefreshCw}
                     color="bg-orange-100 text-orange-600"
                 />

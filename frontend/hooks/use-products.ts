@@ -39,16 +39,9 @@ export function useCreateProduct() {
 }
 
 export function useUpdateProduct() {
-  const queryClient = useQueryClient();
-
   return useMutation({
     mutationFn: ({ id, payload }: { id: string; payload: UpdateProductInput }) =>
       updateProduct(id, payload),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["products"] });
-      queryClient.invalidateQueries({ queryKey: ["product-mappings"] });
-      queryClient.invalidateQueries({ queryKey: ["sync-logs"] });
-    },
   });
 }
 

@@ -1,7 +1,6 @@
 "use client";
 
 import { Edit2, Trash2, Link2 } from "lucide-react";
-import { formatDistanceToNow } from "date-fns";
 import { ProductMapping } from "@/types/product-mapping";
 import { Button } from "@/components/ui/button";
 
@@ -55,18 +54,16 @@ export default function ProductMappingTable({
 
   return (
     <div className="w-full max-w-full overflow-x-auto rounded-2xl border bg-white shadow-sm">
-      <table className="min-w-[1100px] w-full text-left text-sm text-slate-600">
+      <table className="min-w-[1000px] w-full text-left text-sm text-slate-600">
         <thead className="border-b bg-slate-50 text-xs font-semibold uppercase text-slate-500">
           <tr>
             <th className="px-6 py-4">Master Product</th>
             <th className="px-6 py-4">Channel</th>
-            <th className="px-6 py-4">Existing Channel Listing</th>
-            <th className="px-6 py-4">Channel SKU</th>
-            <th className="px-6 py-4">Price</th>
-            <th className="px-6 py-4">Quantity</th>
+            <th className="px-6 py-4">Store</th>
+            <th className="px-6 py-4">Channel Price</th>
+            <th className="px-6 py-4">Channel Quantity</th>
             <th className="px-6 py-4">Currency</th>
             <th className="px-6 py-4">Sync Status</th>
-            <th className="px-6 py-4">Last Synced</th>
             <th className="px-6 py-4 text-right">Actions</th>
           </tr>
         </thead>
@@ -80,26 +77,36 @@ export default function ProductMappingTable({
             const quantityMissing = mapping.channelQuantity === undefined || mapping.channelQuantity === null;
             const categoryRequired = platform === "EBAY" && !mapping.channelCategoryId;
             const looksSynced = mapping.syncStatus === "SYNCED" && !listingMissing && !priceMissing && !quantityMissing;
+            const channelPrice = priceMissing
+              ? "Price missing"
+              : new Intl.NumberFormat(undefined, {
+                  style: "currency",
+                  currency: mapping.channelCurrency || "USD",
+                }).format(mapping.channelPrice as number);
 
             return (
               <tr key={mapping._id} className="hover:bg-slate-50/80">
                 <td className="px-6 py-4">
                   <div className="font-semibold text-slate-900">{product?.title || mapping.sku}</div>
-                  <div className="font-mono text-xs text-slate-500">{product?.sku || mapping.sku}</div>
+                  <div className="text-xs text-slate-500">SKU: {product?.sku || mapping.sku}</div>
+                  {mapping.externalSku && mapping.externalSku !== (product?.sku || mapping.sku) && (
+                    <div className="text-xs text-slate-500">Channel SKU: {mapping.externalSku}</div>
+                  )}
+                  {!listingMissing && (
+                    <div className="max-w-xs truncate font-mono text-[11px] text-slate-400" title={mapping.externalProductId}>
+                      External ID: {mapping.externalProductId}
+                    </div>
+                  )}
                 </td>
                 <td className="px-6 py-4 font-medium text-slate-800">{platformLabel(platform)}</td>
-                <td className="px-6 py-4">{listingMissing ? "External listing missing" : product?.title || mapping.sku}</td>
-                <td className="px-6 py-4 font-mono text-xs">{mapping.externalSku || mapping.sku}</td>
-                <td className="px-6 py-4">{priceMissing ? "Price missing" : mapping.channelPrice}</td>
+                <td className="px-6 py-4">{integration?.storeName || "--"}</td>
+                <td className="px-6 py-4 font-medium">{channelPrice}</td>
                 <td className="px-6 py-4">{quantityMissing ? "Quantity missing" : mapping.channelQuantity}</td>
                 <td className="px-6 py-4">{mapping.channelCurrency || "--"}</td>
                 <td className="px-6 py-4">
                   <div className="font-medium text-slate-800">{looksSynced ? "Synced" : mapping.syncStatus}</div>
                   {categoryRequired && <div className="text-xs text-amber-700">Category required</div>}
                   {mapping.lastSyncError && <div className="max-w-xs text-xs text-red-600">{mapping.lastSyncError}</div>}
-                </td>
-                <td className="px-6 py-4 text-xs text-slate-500">
-                  {mapping.lastSyncedAt ? formatDistanceToNow(new Date(mapping.lastSyncedAt), { addSuffix: true }) : "--"}
                 </td>
                 <td className="px-6 py-4 text-right">
                   <div className="flex items-center justify-end gap-2">

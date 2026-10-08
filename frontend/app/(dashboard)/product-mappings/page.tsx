@@ -84,7 +84,7 @@ export default function ProductMappingsPage() {
             Channel Mappings
           </h1>
           <p className="mt-1 text-slate-500">
-            Overview of connections between master products and existing channel listings. Connect or publish from a master product.
+            Manage the connection between each Master Product and its Shopify or eBay listing. Connect existing listings here; publish new listings from a product detail page.
           </p>
         </div>
 

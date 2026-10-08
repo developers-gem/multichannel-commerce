@@ -33,7 +33,9 @@ export default function IntegrationStatus() {
       </h2>
 
       <div className="space-y-4">
-        {data?.data.map((integration) => (
+        {(data?.data || [])
+          .filter((integration) => integration.platform === "SHOPIFY" || integration.platform === "EBAY")
+          .map((integration) => (
           <div
             key={integration._id}
             className="flex items-center justify-between rounded-xl border p-4"
@@ -60,7 +62,7 @@ export default function IntegrationStatus() {
                 : "Disconnected"}
             </span>
           </div>
-        ))}
+          ))}
       </div>
     </div>
   );

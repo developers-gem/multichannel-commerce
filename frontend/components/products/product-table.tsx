@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Edit2, Trash2, Package, Image as ImageIcon, ChevronLeft, ChevronRight, Layers, RefreshCw, Send } from "lucide-react";
+import { Edit2, Trash2, Package, Image as ImageIcon, ChevronLeft, ChevronRight, Layers, RefreshCw, Eye } from "lucide-react";
 import { Product, ProductsPagination } from "@/types/product";
 import { Button } from "@/components/ui/button";
 
@@ -11,8 +11,8 @@ interface ProductTableProps {
   isLoading: boolean;
   onEdit: (product: Product) => void;
   onDelete: (product: Product) => void;
+  onView: (product: Product) => void;
   onSyncDetails: (product: Product) => void;
-  onPublish: (product: Product) => void;
   onPageChange: (newPage: number) => void;
 }
 
@@ -22,8 +22,8 @@ export default function ProductTable({
   isLoading,
   onEdit,
   onDelete,
+  onView,
   onSyncDetails,
-  onPublish,
   onPageChange,
 }: ProductTableProps) {
   if (isLoading) {
@@ -150,13 +150,13 @@ export default function ProductTable({
                   {/* Connected Channels Badge */}
                   <td className="px-6 py-4">
                     <button
-                      onClick={() => onSyncDetails(product)}
+                      onClick={() => onView(product)}
                       className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-bold transition-all hover:opacity-90 ${
                         mappingCount > 0
                           ? "bg-indigo-50 text-indigo-700 border border-indigo-200 hover:bg-indigo-100"
                           : "bg-slate-100 text-slate-500 border border-slate-200 hover:bg-slate-200"
                       }`}
-                      title="Click to view & trigger channel synchronization"
+                      title="View and manage channel mappings"
                     >
                       <Layers className="h-3.5 w-3.5" />
                       {mappingCount} {mappingCount === 1 ? "Channel" : "Channels"}
@@ -184,11 +184,11 @@ export default function ProductTable({
                       <Button
                         variant="ghost"
                         size="icon"
-                        onClick={() => onPublish(product)}
-                        title="Publish to Channels"
+                        onClick={() => onView(product)}
+                        title="View and manage Master Product"
                         className="h-8 w-8 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50"
                       >
-                        <Send className="h-4 w-4" />
+                        <Eye className="h-4 w-4" />
                       </Button>
 
                       <Button

@@ -10,8 +10,10 @@ import { Input } from "@/components/ui/input";
 import { useProduct, usePublishProductToChannels } from "@/hooks/use-products";
 import { useIntegrations } from "@/hooks/use-integrations";
 import { useCreateProductMapping, useProductMappings, useUpdateProductMapping } from "@/hooks/use-product-mappings";
+import { useTriggerSync } from "@/hooks/use-sync";
 import { suggestEbayCategories, EbayCategorySuggestion } from "@/services/integration.service";
 import { getChannelListings } from "@/services/product-mapping.service";
+import ProductMappingFormModal from "@/components/product-mappings/product-mapping-form-modal";
 import { ChannelListing, ProductMapping } from "@/types/product-mapping";
 import { Integration } from "@/types/integration";
 import { Product } from "@/types/product";
@@ -34,6 +36,13 @@ function matchesQuery(listing: ChannelListing, query: string): boolean {
 
 function channelLabel(platform: string): string {
   return platform === "EBAY" ? "eBay" : "Shopify";
+}
+
+function formatCurrency(value: number, currency?: string): string {
+  return new Intl.NumberFormat(undefined, {
+    style: "currency",
+    currency: currency || "USD",
+  }).format(value);
 }
 
 export default function ProductDetailPage() {
@@ -66,10 +75,44 @@ export default function ProductDetailPage() {
         <Link href="/products" className="text-sm text-indigo-600">Back to products</Link>
         <h1 className="mt-2 text-3xl font-bold text-slate-900">{product.title}</h1>
         <p className="mt-1 text-slate-500">
-          SKU: {product.sku}
-          {product.costPrice !== undefined ? ` · Cost: ${product.costPrice}` : ""}
+          Master SKU: {product.sku}
         </p>
       </div>
+
+      <section className="rounded-2xl border bg-white p-5 shadow-sm">
+        <h2 className="text-lg font-semibold text-slate-900">Master Product</h2>
+        <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+          <div>
+            <p className="text-xs text-slate-500">Cost</p>
+            <p className="font-semibold text-slate-900">
+              {product.costPrice !== undefined ? formatCurrency(product.costPrice, product.currency) : "--"}
+            </p>
+          </div>
+          <div>
+            <p className="text-xs text-slate-500">Base Price</p>
+            <p className="font-semibold text-slate-900">{formatCurrency(product.price, product.currency)}</p>
+          </div>
+          <div>
+            <p className="text-xs text-slate-500">Master Quantity</p>
+            <p className="font-semibold text-slate-900">{product.quantity}</p>
+          </div>
+          <div>
+            <p className="text-xs text-slate-500">Shipping</p>
+            <p className="font-semibold text-slate-900">{formatCurrency(product.shippingCharge || 0, product.currency)}</p>
+          </div>
+          <div>
+            <p className="text-xs text-slate-500">Status</p>
+            <p className="font-semibold text-slate-900">{product.status}</p>
+          </div>
+        </div>
+        {(product.brand || product.category || product.description) && (
+          <div className="mt-4 border-t pt-4 text-sm text-slate-600">
+            {product.brand && <p>Brand: {product.brand}</p>}
+            {product.category && <p>Category: {product.category}</p>}
+            {product.description && <p className="mt-2 whitespace-pre-wrap">{product.description}</p>}
+          </div>
+        )}
+      </section>
 
       <section className="space-y-4">
         <div>
@@ -108,7 +151,9 @@ function ChannelStoreCard({
   const publishMutation = usePublishProductToChannels();
   const updateMapping = useUpdateProductMapping();
   const createMapping = useCreateProductMapping();
+  const triggerSync = useTriggerSync();
   const [mode, setMode] = useState<"idle" | "connect" | "publish">("idle");
+  const [isMappingModalOpen, setIsMappingModalOpen] = useState(false);
   const [price, setPrice] = useState(mapping?.channelPrice !== undefined ? String(mapping.channelPrice) : "");
   const [quantity, setQuantity] = useState(mapping?.channelQuantity !== undefined ? String(mapping.channelQuantity) : "");
   const [listings, setListings] = useState<ChannelListing[]>([]);
@@ -198,19 +243,13 @@ function ChannelStoreCard({
     );
   };
 
-  const saveAndSync = () => {
+  const syncNow = () => {
     if (!mapping) return;
-    updateMapping.mutate(
+    triggerSync.mutate(
+      { productMappingId: mapping._id, action: "UPDATE" },
       {
-        id: mapping._id,
-        payload: {
-          channelPrice: price === "" ? undefined : Number(price),
-          channelQuantity: quantity === "" ? undefined : Number(quantity),
-        },
-      },
-      {
-        onSuccess: () => toast.success(`${label} price and quantity saved. Sync queued for this store only.`),
-        onError: (err: Error) => toast.error(err.message || "Failed to save channel values"),
+        onSuccess: () => toast.success(`Sync queued for ${label}.`),
+        onError: (err: Error) => toast.error(err.message || `Failed to sync ${label}`),
       }
     );
   };
@@ -226,9 +265,31 @@ function ChannelStoreCard({
         <div className="space-y-3">
           <div className="text-sm text-slate-700">
             <p className="font-medium">Existing {label} {listingNoun}</p>
-            <p>{product.title}</p>
-            <p>SKU: {mapping.externalSku || product.sku}</p>
-            {mapping.channelCurrency ? <p>Currency: {mapping.channelCurrency}</p> : null}
+            <p className="text-xs text-slate-500">Store: {integration.storeName}</p>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <div>
+              <p className="text-xs text-slate-500">Status</p>
+              <p className="font-medium text-slate-900">{mapping.syncStatus || "PENDING"}</p>
+            </div>
+            <div>
+              <p className="text-xs text-slate-500">Channel Price</p>
+              <p className="font-medium text-slate-900">
+                {mapping.channelPrice !== undefined ? formatCurrency(mapping.channelPrice, mapping.channelCurrency || product.currency) : "--"}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs text-slate-500">Channel Quantity</p>
+              <p className="font-medium text-slate-900">{mapping.channelQuantity ?? "--"}</p>
+            </div>
+            <div>
+              <p className="text-xs text-slate-500">Channel SKU</p>
+              <p className="font-mono text-sm text-slate-900">{mapping.externalSku || product.sku}</p>
+            </div>
+            <div className="sm:col-span-2 lg:col-span-4">
+              <p className="text-xs text-slate-500">External Listing ID</p>
+              <p className="font-mono text-sm text-slate-900">{mapping.externalProductId || "Being created"}</p>
+            </div>
           </div>
           {mapping.syncStatus === "FAILED" && (
             <p className="text-sm text-red-600">{mapping.lastSyncError || "Sync failed"}</p>
@@ -237,12 +298,9 @@ function ChannelStoreCard({
             <p className="text-sm text-amber-700">External listing is still being created.</p>
           )}
           {categoryMissing && <p className="text-sm text-amber-700">Action required: eBay category missing</p>}
-          <div className="grid max-w-md grid-cols-2 gap-3">
-            <Input type="number" min="0" step="0.01" value={price} onChange={(event) => setPrice(event.target.value)} placeholder="Channel price" />
-            <Input type="number" min="0" step="1" value={quantity} onChange={(event) => setQuantity(event.target.value)} placeholder="Channel quantity" />
-          </div>
           <div className="flex flex-wrap gap-2">
-            <Button onClick={saveAndSync} disabled={updateMapping.isPending}>Save & Sync</Button>
+            <Button onClick={syncNow} disabled={triggerSync.isPending || !mapping.externalProductId}>Sync Now</Button>
+            <Button variant="outline" onClick={() => setIsMappingModalOpen(true)}>Manage Mapping</Button>
             {categoryMissing && (
               <Button variant="outline" onClick={() => setSetupOpen((open) => !open)}>Complete eBay Setup</Button>
             )}
@@ -376,6 +434,15 @@ function ChannelStoreCard({
             </div>
           )}
         </div>
+      )}
+      {mapping && (
+        <ProductMappingFormModal
+          isOpen={isMappingModalOpen}
+          onClose={() => setIsMappingModalOpen(false)}
+          initialData={mapping}
+          defaultProductId={product._id}
+          defaultIntegrationId={integration._id}
+        />
       )}
     </div>
   );

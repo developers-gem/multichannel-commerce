@@ -13,7 +13,6 @@ import ProductTable from "@/components/products/product-table";
 import ProductFormModal from "@/components/products/product-form-modal";
 import ProductDeleteDialog from "@/components/products/product-delete-dialog";
 import ProductSyncModal from "@/components/products/product-sync-modal";
-import ProductPublishModal from "@/components/products/product-publish-modal";
 
 export default function ProductsPage() {
   const router = useRouter();
@@ -31,14 +30,12 @@ export default function ProductsPage() {
   const [isSyncModalOpen, setIsSyncModalOpen] = useState(false);
   const [productToSync, setProductToSync] = useState<Product | null>(null);
 
-  const [isPublishModalOpen, setIsPublishModalOpen] = useState(false);
-  const [productToPublish, setProductToPublish] = useState<Product | null>(null);
-
   const { data, isLoading, isError, error } = useProducts(page, limit, search);
   const { data: integrationsData, isLoading: isIntegrationsLoading } = useIntegrations();
 
-  const integrationsList = integrationsData?.data || [];
-  const activeIntegrations = integrationsList.filter((i) => i.isActive);
+  const activeIntegrations = (integrationsData?.data || []).filter(
+    (integration) => integration.isActive && (integration.platform === "SHOPIFY" || integration.platform === "EBAY")
+  );
   const hasIntegrations = activeIntegrations.length > 0;
 
   const handleOpenAddModal = () => {
@@ -59,11 +56,6 @@ export default function ProductsPage() {
   const handleOpenSyncModal = (product: Product) => {
     setProductToSync(product);
     setIsSyncModalOpen(true);
-  };
-
-  const handleOpenPublishModal = (product: Product) => {
-    setProductToPublish(product);
-    setIsPublishModalOpen(true);
   };
 
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -135,15 +127,6 @@ export default function ProductsPage() {
                   <Plug className="mr-1.5 h-3.5 w-3.5" />
                   Connect eBay
                 </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => router.push("/integrations?connect=CUSTOM_WEBSITE")}
-                  className="text-slate-800 border-slate-300 hover:bg-white text-xs"
-                >
-                  <Plug className="mr-1.5 h-3.5 w-3.5" />
-                  Connect Custom Website
-                </Button>
               </>
             )}
           </div>
@@ -178,7 +161,7 @@ export default function ProductsPage() {
         onEdit={handleOpenEditModal}
         onDelete={handleOpenDeleteModal}
         onSyncDetails={handleOpenSyncModal}
-        onPublish={handleOpenPublishModal}
+        onView={(product) => router.push(`/products/${product._id}`)}
         onPageChange={(newPage) => setPage(newPage)}
       />
 
@@ -201,14 +184,6 @@ export default function ProductsPage() {
         isOpen={isSyncModalOpen}
         onClose={() => setIsSyncModalOpen(false)}
         product={productToSync}
-        onPublishToChannels={handleOpenPublishModal}
-      />
-
-      {/* Product Channel Publishing Modal */}
-      <ProductPublishModal
-        isOpen={isPublishModalOpen}
-        onClose={() => setIsPublishModalOpen(false)}
-        product={productToPublish}
       />
     </div>
   );

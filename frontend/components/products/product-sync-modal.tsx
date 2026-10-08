@@ -10,10 +10,10 @@ import {
   Clock,
   Layers,
   Loader2,
-  Send,
   Trash2,
   Ban,
 } from "lucide-react";
+import Link from "next/link";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -26,14 +26,12 @@ interface ProductSyncModalProps {
   isOpen: boolean;
   onClose: () => void;
   product: Product | null;
-  onPublishToChannels?: (product: Product) => void;
 }
 
 export default function ProductSyncModal({
   isOpen,
   onClose,
   product,
-  onPublishToChannels,
 }: ProductSyncModalProps) {
   if (!isOpen || !product) return null;
 
@@ -159,18 +157,6 @@ export default function ProductSyncModal({
           </h3>
 
           <div className="flex items-center gap-2">
-            {onPublishToChannels && (
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => onPublishToChannels(product)}
-                className="text-xs gap-1.5 border-indigo-200 text-indigo-700 hover:bg-indigo-50"
-              >
-                <Send className="h-3.5 w-3.5" />
-                Publish / Manage Channels
-              </Button>
-            )}
-
             <Button
               size="sm"
               onClick={handleSyncAll}
@@ -199,8 +185,11 @@ export default function ProductSyncModal({
             <Layers className="h-8 w-8 text-slate-400 mx-auto mb-2" />
             <p className="text-sm font-semibold text-slate-700">No Sales Channels Mapped Yet</p>
             <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
-              This product is not currently connected to any active marketplace integrations. Click "Publish / Manage Channels" above to list it on your store accounts.
+              Open the Master Product detail page to connect an existing listing or publish a new one.
             </p>
+            <Link href={`/products/${product._id}`} className="mt-3 inline-block text-sm font-medium text-indigo-600 hover:text-indigo-700">
+              Manage Product Channels
+            </Link>
           </div>
         ) : (
           <div className="space-y-3 max-h-[380px] overflow-y-auto pr-1">
@@ -288,17 +277,7 @@ export default function ProductSyncModal({
 
                     {/* Channel Controls */}
                     <div className="flex items-center gap-2 shrink-0">
-                      {isUnpublished ? (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => onPublishToChannels && onPublishToChannels(product)}
-                          className="h-8 text-xs border-indigo-200 text-indigo-700 hover:bg-indigo-50"
-                        >
-                          <Send className="h-3.5 w-3.5 mr-1" />
-                          Publish Again
-                        </Button>
-                      ) : (
+                      {!isUnpublished && (
                         <>
                           {mapping.syncStatus === "FAILED" && lastFailedLog && (
                             <Button

@@ -5,7 +5,6 @@ import {
   GitCompare,
   FileSpreadsheet,
   RefreshCw,
-  Activity,
   Settings,
   LogOut,
 } from "lucide-react";
@@ -17,9 +16,9 @@ export const sidebarItems = [
     icon: LayoutDashboard,
   },
   {
-    title: "Sync Operations",
-    href: "/sync-dashboard",
-    icon: Activity,
+    title: "Sync Queue",
+    href: "/sync-queue",
+    icon: RefreshCw,
   },
   {
     title: "Integrations",
@@ -40,11 +39,6 @@ export const sidebarItems = [
     title: "CSV Import",
     href: "/csv-import",
     icon: FileSpreadsheet,
-  },
-  {
-    title: "Sync Queue",
-    href: "/sync-queue",
-    icon: RefreshCw,
   },
   
   // {

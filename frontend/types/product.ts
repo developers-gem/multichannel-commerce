@@ -46,6 +46,7 @@ export interface CreateProductInput {
   brand?: string;
   category?: string;
   images?: string[];
+  costPrice?: number;
   price: number;
   currency?: string;
   quantity: number;
@@ -59,6 +60,7 @@ export interface UpdateProductInput {
   brand?: string;
   category?: string;
   images?: string[];
+  costPrice?: number;
   price?: number;
   currency?: string;
   quantity?: number;

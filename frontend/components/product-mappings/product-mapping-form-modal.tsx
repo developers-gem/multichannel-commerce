@@ -41,12 +41,16 @@ interface ProductMappingFormModalProps {
   isOpen: boolean;
   onClose: () => void;
   initialData?: ProductMapping | null;
+  defaultProductId?: string;
+  defaultIntegrationId?: string;
 }
 
 export default function ProductMappingFormModal({
   isOpen,
   onClose,
   initialData,
+  defaultProductId,
+  defaultIntegrationId,
 }: ProductMappingFormModalProps) {
   const isEditing = Boolean(initialData);
 
@@ -56,8 +60,15 @@ export default function ProductMappingFormModal({
   const { data: productsData, isLoading: isLoadingProducts } = useProducts(1, 100);
   const { data: integrationsData, isLoading: isLoadingIntegrations } = useIntegrations();
 
-  const activeIntegrations =
-    integrationsData?.data.filter((item) => item.isActive) || [];
+  const activeIntegrations = (integrationsData?.data || []).filter(
+    (item) => item.isActive && (item.platform === "SHOPIFY" || item.platform === "EBAY")
+  );
+  const masterProduct = initialData && typeof initialData.productId === "object"
+    ? initialData.productId
+    : productsData?.data?.products.find((product) => product._id === initialData?.productId);
+  const channelIntegration = initialData && typeof initialData.integrationId === "object"
+    ? initialData.integrationId
+    : integrationsData?.data.find((integration) => integration._id === initialData?.integrationId);
 
   const [listings, setListings] = useState<ChannelListing[]>([]);
   const [listingQuery, setListingQuery] = useState("");
@@ -119,8 +130,8 @@ export default function ProductMappingFormModal({
       });
     } else {
       reset({
-        productId: "",
-        integrationId: "",
+        productId: defaultProductId || "",
+        integrationId: defaultIntegrationId || "",
         externalProductId: "",
         externalVariantId: "",
         externalSku: "",
@@ -133,7 +144,7 @@ export default function ProductMappingFormModal({
         isActive: true,
       });
     }
-  }, [initialData, reset, isOpen]);
+  }, [initialData, reset, isOpen, defaultProductId, defaultIntegrationId]);
 
   useEffect(() => {
     if (!isOpen || isEditing || !integrationId) {
@@ -255,73 +266,99 @@ export default function ProductMappingFormModal({
         </div>
 
         <form onSubmit={handleSubmit(onSubmit)} className="mt-6 space-y-4">
-          {/* Master Product Selection */}
-          <div>
-            <Label htmlFor="productId">
-              Master Product {isEditing && <span className="text-xs text-slate-400">(Read-only)</span>}
-            </Label>
-
-            {isLoadingProducts ? (
-              <div className="mt-1 flex h-10 items-center px-3 text-sm text-slate-400">
-                Loading products...
+          {isEditing && initialData && (
+            <div className="grid gap-3 rounded-lg border bg-slate-50 p-3 text-sm sm:grid-cols-2">
+              <div>
+                <p className="text-xs text-slate-500">Master Product</p>
+                <p className="font-medium text-slate-900">
+                  {masterProduct ? `${masterProduct.title} (${masterProduct.sku})` : initialData.sku}
+                </p>
               </div>
-            ) : (
-              <select
-                id="productId"
-                disabled={isEditing}
-                className={`mt-1 flex h-10 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-600 ${
-                  isEditing ? "bg-slate-100 cursor-not-allowed text-slate-500" : ""
-                }`}
-                {...register("productId")}
-              >
-                <option value="">-- Select Master Product --</option>
-                {productsData?.data?.products?.map((prod) => (
-                  <option key={prod._id} value={prod._id}>
-                    {prod.sku} — {prod.title}
-                  </option>
-                ))}
-              </select>
-            )}
-
-            {errors.productId && (
-              <p className="mt-1 text-xs text-red-500">{errors.productId.message}</p>
-            )}
-          </div>
-
-          {/* Integration Store Selection */}
-          <div>
-            <Label htmlFor="integrationId">
-              Integration Channel {isEditing && <span className="text-xs text-slate-400">(Read-only)</span>}
-            </Label>
-
-            {isLoadingIntegrations ? (
-              <div className="mt-1 flex h-10 items-center px-3 text-sm text-slate-400">
-                Loading integrations...
+              <div>
+                <p className="text-xs text-slate-500">Channel</p>
+                <p className="font-medium text-slate-900">
+                  {channelIntegration ? `${channelIntegration.platform} — ${channelIntegration.storeName}` : "Connected store"}
+                </p>
               </div>
-            ) : (
-              <select
-                id="integrationId"
-                disabled={isEditing}
-                className={`mt-1 flex h-10 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-600 ${
-                  isEditing ? "bg-slate-100 cursor-not-allowed text-slate-500" : ""
-                }`}
-                {...register("integrationId")}
-              >
-                <option value="">-- Select Integration Channel --</option>
-                {activeIntegrations.map((store) => (
-                  <option key={store._id} value={store._id}>
-                    {store.platform} — {store.storeName}
-                  </option>
-                ))}
-              </select>
-            )}
+              <div className="sm:col-span-2">
+                <p className="text-xs text-slate-500">Channel Listing / External ID</p>
+                <p className="break-all font-mono text-xs text-slate-900">
+                  {watch("externalProductId") || "--"}
+                  {watch("externalVariantId") ? ` / ${watch("externalVariantId")}` : ""}
+                </p>
+              </div>
+            </div>
+          )}
 
-            {errors.integrationId && (
-              <p className="mt-1 text-xs text-red-500">
-                {errors.integrationId.message}
-              </p>
-            )}
-          </div>
+          {!isEditing && !defaultProductId && (
+            <div>
+              <Label htmlFor="productId">
+                Master Product {isEditing && <span className="text-xs text-slate-400">(Read-only)</span>}
+              </Label>
+
+              {isLoadingProducts ? (
+                <div className="mt-1 flex h-10 items-center px-3 text-sm text-slate-400">
+                  Loading products...
+                </div>
+              ) : (
+                <select
+                  id="productId"
+                  disabled={isEditing}
+                  className={`mt-1 flex h-10 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-600 ${
+                    isEditing ? "bg-slate-100 cursor-not-allowed text-slate-500" : ""
+                  }`}
+                  {...register("productId")}
+                >
+                  <option value="">-- Select Master Product --</option>
+                  {productsData?.data?.products?.map((prod) => (
+                    <option key={prod._id} value={prod._id}>
+                      {prod.sku} — {prod.title}
+                    </option>
+                  ))}
+                </select>
+              )}
+
+              {errors.productId && (
+                <p className="mt-1 text-xs text-red-500">{errors.productId.message}</p>
+              )}
+            </div>
+          )}
+
+          {!isEditing && !defaultIntegrationId && (
+            <div>
+              <Label htmlFor="integrationId">
+                Integration Channel {isEditing && <span className="text-xs text-slate-400">(Read-only)</span>}
+              </Label>
+
+              {isLoadingIntegrations ? (
+                <div className="mt-1 flex h-10 items-center px-3 text-sm text-slate-400">
+                  Loading integrations...
+                </div>
+              ) : (
+                <select
+                  id="integrationId"
+                  disabled={isEditing}
+                  className={`mt-1 flex h-10 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-600 ${
+                    isEditing ? "bg-slate-100 cursor-not-allowed text-slate-500" : ""
+                  }`}
+                  {...register("integrationId")}
+                >
+                  <option value="">-- Select Integration Channel --</option>
+                  {activeIntegrations.map((store) => (
+                    <option key={store._id} value={store._id}>
+                      {store.platform} — {store.storeName}
+                    </option>
+                  ))}
+                </select>
+              )}
+
+              {errors.integrationId && (
+                <p className="mt-1 text-xs text-red-500">
+                  {errors.integrationId.message}
+                </p>
+              )}
+            </div>
+          )}
 
           {!isEditing && (
             <div>
@@ -368,16 +405,18 @@ export default function ProductMappingFormModal({
             </div>
           )}
 
-          {(selectedListing || isEditing) && (
+          {selectedListing && (
             <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700 space-y-1">
               <div>Product ID: {watch("externalProductId") || "--"}</div>
               <div>Variant ID: {watch("externalVariantId") || "--"}</div>
-              <div>SKU: {watch("externalSku") || "--"}</div>
-              <div>Currency: {watch("channelCurrency") || "--"}</div>
             </div>
           )}
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <Label htmlFor="externalSku">Channel SKU</Label>
+              <Input id="externalSku" {...register("externalSku")} />
+            </div>
             <div>
               <Label htmlFor="channelPrice">Channel price</Label>
               <Input id="channelPrice" type="number" min="0" step="0.01" {...register("channelPrice")} />
@@ -385,6 +424,10 @@ export default function ProductMappingFormModal({
             <div>
               <Label htmlFor="channelQuantity">Channel quantity</Label>
               <Input id="channelQuantity" type="number" min="0" step="1" {...register("channelQuantity")} />
+            </div>
+            <div>
+              <Label htmlFor="channelCurrency">Currency</Label>
+              <Input id="channelCurrency" maxLength={3} placeholder="USD" {...register("channelCurrency")} />
             </div>
           </div>
 
